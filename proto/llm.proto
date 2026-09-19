@@ -1,0 +1,34 @@
+syntax = "proto3";
+
+package llm;
+
+// ============================================================
+// LLM Service
+// ============================================================
+
+service LLMService {
+
+    rpc GetLLMAnswer(LLMRequest) returns (LLMResponse);
+}
+
+
+// ============================================================
+// Request
+// ============================================================
+
+message LLMRequest {
+    string request_id = 1;
+    string query = 2;
+    string context = 3;
+}
+
+
+// ============================================================
+// Response
+// ============================================================
+
+message LLMResponse {
+    bool success = 1;
+    string answer = 2;
+    string message = 3;
+}

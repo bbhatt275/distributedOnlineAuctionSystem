@@ -1,0 +1,155 @@
+syntax = "proto3";
+
+package auction;
+
+// ============================================================
+// Auction Service
+// ============================================================
+
+service AuctionService {
+
+    // Authentication
+    rpc Login(LoginRequest) returns (LoginResponse);
+    rpc Logout(LogoutRequest) returns (StatusResponse);
+
+    // Client generic requests
+    rpc Post(PostRequest) returns (StatusResponse);
+    rpc Get(GetRequest) returns (GetResponse);
+}
+
+// ============================================================
+// Authentication
+// ============================================================
+
+message LoginRequest {
+    string username = 1;
+    string password = 2;
+}
+
+message LoginResponse {
+    StatusResponse status = 1;
+    string token = 2;
+}
+
+message LogoutRequest {
+    string token = 1;
+}
+
+
+// ============================================================
+// POST
+// ============================================================
+
+message PostRequest {
+    string token = 1;
+
+    oneof operation {
+        CreateAuctionRequest create_auction = 2;
+        PlaceBidRequest place_bid = 3;
+        CloseAuctionRequest close_auction = 4;
+    }
+}
+
+
+// ============================================================
+// GET
+// ============================================================
+
+message GetRequest {
+    string token = 1;
+
+    oneof query {
+        GetAuctionRequest get_auction = 2;
+        GetAuctionsRequest get_auctions = 3;
+        GetBidsRequest get_bids = 4;
+    }
+}
+
+
+// ============================================================
+// Auction
+// ============================================================
+
+message CreateAuctionRequest {
+    string item_name = 1;
+    string description = 2;
+    double starting_price = 3;
+    int64 duration_seconds = 4;
+}
+
+message GetAuctionRequest {
+    string auction_id = 1;
+}
+
+message GetAuctionsRequest {
+    bool active_only = 1;
+}
+
+message CloseAuctionRequest {
+    string auction_id = 1;
+}
+
+
+// ============================================================
+// Bidding
+// ============================================================
+
+message PlaceBidRequest {
+    string auction_id = 1;
+    double amount = 2;
+}
+
+message GetBidsRequest {
+    string auction_id = 1;
+}
+
+
+// ============================================================
+// Responses
+// ============================================================
+
+message StatusResponse {
+    bool success = 1;
+    string message = 2;
+}
+
+message GetResponse {
+    StatusResponse status = 1;
+    repeated Auction auctions = 2;
+    repeated Bid bids = 3;
+}
+
+
+// ============================================================
+// Auction Data
+// ============================================================
+
+message Auction {
+    string auction_id = 1;
+    string item_name = 2;
+    string description = 3;
+
+    double starting_price = 4;
+    double current_highest_bid = 5;
+
+    string highest_bidder = 6;
+
+    int64 start_time = 7;
+    int64 end_time = 8;
+
+    bool active = 9;
+    string winner = 10;
+}
+
+
+// ============================================================
+// Bid Data
+// ============================================================
+
+message Bid {
+    string bid_id = 1;
+    string auction_id = 2;
+    string bidder = 3;
+    double amount = 4;
+    int64 timestamp = 5;
+}
