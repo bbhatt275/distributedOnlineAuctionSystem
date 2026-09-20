@@ -1,5 +1,7 @@
 import time
 
+import grpc
+
 from generated import llm_pb2
 from generated import llm_pb2_grpc
 
@@ -9,6 +11,18 @@ from llm.generator import LLMGenerator
 class LLMService(llm_pb2_grpc.LLMServiceServicer):
     """
     gRPC service for the independent LLM server.
+
+    Responsibilities:
+    - receive LLMRequest
+    - validate the request
+    - call LLMGenerator
+    - return LLMResponse
+
+    This service does not know anything about:
+    - auction business logic
+    - authentication
+    - bidding
+    - payment
     """
 
     def __init__(self):
@@ -18,7 +32,10 @@ class LLMService(llm_pb2_grpc.LLMServiceServicer):
 
         start_time = time.perf_counter()
 
+        # ----------------------------------------
         # Validate request
+        # ----------------------------------------
+
         if not request.request_id:
             return llm_pb2.LLMResponse(
                 request_id="",
@@ -43,8 +60,12 @@ class LLMService(llm_pb2_grpc.LLMServiceServicer):
                 error_code=llm_pb2.INVALID_REQUEST,
             )
 
+        # ----------------------------------------
         # Generate answer
+        # ----------------------------------------
+
         try:
+
             answer = self.generator.generate(request)
 
             processing_time_ms = int(
@@ -60,6 +81,10 @@ class LLMService(llm_pb2_grpc.LLMServiceServicer):
                 model_name=self.generator.model.model_name,
                 processing_time_ms=processing_time_ms,
             )
+
+        # ----------------------------------------
+        # Model unavailable
+        # ----------------------------------------
 
         except Exception as e:
 
