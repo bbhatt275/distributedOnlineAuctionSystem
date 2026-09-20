@@ -24,17 +24,37 @@ _sym_db = _symbol_database.Default()
 
 
 
-DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\tllm.proto\x12\x03llm\"@\n\nLLMRequest\x12\x12\n\nrequest_id\x18\x01 \x01(\t\x12\r\n\x05query\x18\x02 \x01(\t\x12\x0f\n\x07\x63ontext\x18\x03 \x01(\t\"?\n\x0bLLMResponse\x12\x0f\n\x07success\x18\x01 \x01(\x08\x12\x0e\n\x06\x61nswer\x18\x02 \x01(\t\x12\x0f\n\x07message\x18\x03 \x01(\t2?\n\nLLMService\x12\x31\n\x0cGetLLMAnswer\x12\x0f.llm.LLMRequest\x1a\x10.llm.LLMResponseb\x06proto3')
+DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\tllm.proto\x12\x03llm\">\n\x0b\x43hatMessage\x12\x1e\n\x04role\x18\x01 \x01(\x0e\x32\x10.llm.MessageRole\x12\x0f\n\x07\x63ontent\x18\x02 \x01(\t\"\x8c\x04\n\x0e\x41uctionContext\x12\x12\n\nauction_id\x18\x01 \x01(\t\x12\x11\n\titem_name\x18\x02 \x01(\t\x12\x18\n\x10item_description\x18\x03 \x01(\t\x12\x16\n\x0estarting_price\x18\x04 \x01(\x01\x12\x1b\n\x13\x63urrent_highest_bid\x18\x05 \x01(\x01\x12\x10\n\x08\x63urrency\x18\x06 \x01(\t\x12\x16\n\x0e\x61uction_status\x18\x07 \x01(\t\x12\x12\n\nstart_time\x18\x08 \x01(\t\x12\x10\n\x08\x65nd_time\x18\t \x01(\t\x12\x11\n\tbid_count\x18\n \x01(\x05\x12\x11\n\twinner_id\x18\x0b \x01(\t\x12\x13\n\x0bwinning_bid\x18\x0c \x01(\x01\x12@\n\x0fitem_attributes\x18\r \x03(\x0b\x32\'.llm.AuctionContext.ItemAttributesEntry\x12\x46\n\x12\x61\x64\x64itional_context\x18\x0e \x03(\x0b\x32*.llm.AuctionContext.AdditionalContextEntry\x1a\x35\n\x13ItemAttributesEntry\x12\x0b\n\x03key\x18\x01 \x01(\t\x12\r\n\x05value\x18\x02 \x01(\t:\x02\x38\x01\x1a\x38\n\x16\x41\x64\x64itionalContextEntry\x12\x0b\n\x03key\x18\x01 \x01(\t\x12\r\n\x05value\x18\x02 \x01(\t:\x02\x38\x01\";\n\x10GenerationConfig\x12\x12\n\nmax_tokens\x18\x01 \x01(\x05\x12\x13\n\x0btemperature\x18\x02 \x01(\x02\"\x80\x02\n\nLLMRequest\x12\x12\n\nrequest_id\x18\x01 \x01(\t\x12#\n\ttask_type\x18\x02 \x01(\x0e\x32\x10.llm.LLMTaskType\x12\r\n\x05query\x18\x03 \x01(\t\x12,\n\x0f\x61uction_context\x18\x04 \x01(\x0b\x32\x13.llm.AuctionContext\x12.\n\x14\x63onversation_history\x18\x05 \x03(\x0b\x32\x10.llm.ChatMessage\x12\x1a\n\x12\x61\x64\x64itional_context\x18\x06 \x01(\t\x12\x30\n\x11generation_config\x18\x07 \x01(\x0b\x32\x15.llm.GenerationConfig\"\xaa\x01\n\x0bLLMResponse\x12\x12\n\nrequest_id\x18\x01 \x01(\t\x12\x0f\n\x07success\x18\x02 \x01(\x08\x12\x0e\n\x06\x61nswer\x18\x03 \x01(\t\x12\x0f\n\x07message\x18\x04 \x01(\t\x12%\n\nerror_code\x18\x05 \x01(\x0e\x32\x11.llm.LLMErrorCode\x12\x12\n\nmodel_name\x18\x06 \x01(\t\x12\x1a\n\x12processing_time_ms\x18\x07 \x01(\x03*w\n\x0bLLMTaskType\x12\x18\n\x14LLM_TASK_UNSPECIFIED\x10\x00\x12\x0f\n\x0b\x41UCTION_FAQ\x10\x01\x12\x14\n\x10ITEM_DESCRIPTION\x10\x02\x12\x13\n\x0f\x41UCTION_SUMMARY\x10\x03\x12\x12\n\x0eRESULT_SUMMARY\x10\x04*D\n\x0bMessageRole\x12\x1c\n\x18MESSAGE_ROLE_UNSPECIFIED\x10\x00\x12\x08\n\x04USER\x10\x01\x12\r\n\tASSISTANT\x10\x02*~\n\x0cLLMErrorCode\x12\x12\n\x0eLLM_ERROR_NONE\x10\x00\x12\x13\n\x0fINVALID_REQUEST\x10\x01\x12\x15\n\x11MODEL_UNAVAILABLE\x10\x02\x12\x1a\n\x16MODEL_INFERENCE_FAILED\x10\x03\x12\x12\n\x0eINTERNAL_ERROR\x10\x04\x32?\n\nLLMService\x12\x31\n\x0cGetLLMAnswer\x12\x0f.llm.LLMRequest\x1a\x10.llm.LLMResponseb\x06proto3')
 
 _globals = globals()
 _builder.BuildMessageAndEnumDescriptors(DESCRIPTOR, _globals)
 _builder.BuildTopDescriptorsAndMessages(DESCRIPTOR, 'llm_pb2', _globals)
 if not _descriptor._USE_C_DESCRIPTORS:
   DESCRIPTOR._loaded_options = None
-  _globals['_LLMREQUEST']._serialized_start=18
-  _globals['_LLMREQUEST']._serialized_end=82
-  _globals['_LLMRESPONSE']._serialized_start=84
-  _globals['_LLMRESPONSE']._serialized_end=147
-  _globals['_LLMSERVICE']._serialized_start=149
-  _globals['_LLMSERVICE']._serialized_end=212
+  _globals['_AUCTIONCONTEXT_ITEMATTRIBUTESENTRY']._loaded_options = None
+  _globals['_AUCTIONCONTEXT_ITEMATTRIBUTESENTRY']._serialized_options = b'8\001'
+  _globals['_AUCTIONCONTEXT_ADDITIONALCONTEXTENTRY']._loaded_options = None
+  _globals['_AUCTIONCONTEXT_ADDITIONALCONTEXTENTRY']._serialized_options = b'8\001'
+  _globals['_LLMTASKTYPE']._serialized_start=1102
+  _globals['_LLMTASKTYPE']._serialized_end=1221
+  _globals['_MESSAGEROLE']._serialized_start=1223
+  _globals['_MESSAGEROLE']._serialized_end=1291
+  _globals['_LLMERRORCODE']._serialized_start=1293
+  _globals['_LLMERRORCODE']._serialized_end=1419
+  _globals['_CHATMESSAGE']._serialized_start=18
+  _globals['_CHATMESSAGE']._serialized_end=80
+  _globals['_AUCTIONCONTEXT']._serialized_start=83
+  _globals['_AUCTIONCONTEXT']._serialized_end=607
+  _globals['_AUCTIONCONTEXT_ITEMATTRIBUTESENTRY']._serialized_start=496
+  _globals['_AUCTIONCONTEXT_ITEMATTRIBUTESENTRY']._serialized_end=549
+  _globals['_AUCTIONCONTEXT_ADDITIONALCONTEXTENTRY']._serialized_start=551
+  _globals['_AUCTIONCONTEXT_ADDITIONALCONTEXTENTRY']._serialized_end=607
+  _globals['_GENERATIONCONFIG']._serialized_start=609
+  _globals['_GENERATIONCONFIG']._serialized_end=668
+  _globals['_LLMREQUEST']._serialized_start=671
+  _globals['_LLMREQUEST']._serialized_end=927
+  _globals['_LLMRESPONSE']._serialized_start=930
+  _globals['_LLMRESPONSE']._serialized_end=1100
+  _globals['_LLMSERVICE']._serialized_start=1421
+  _globals['_LLMSERVICE']._serialized_end=1484
 # @@protoc_insertion_point(module_scope)
