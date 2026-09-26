@@ -111,6 +111,7 @@ message GetBidsRequest {
 message StatusResponse {
     bool success = 1;
     string message = 2;
+    string auction_id = 3;
 }
 
 message GetResponse {
