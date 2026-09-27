@@ -11,8 +11,12 @@ class AuthService:
         # token -> username
         self.active_tokens = {}
 
-        # Create one initial user for M1 testing
+        # Create users for M1 testing
         self.create_user("bharat", "password123")
+        self.create_user("alice", "alice123")
+        self.create_user("bob", "bob123")
+        self.create_user("charlie", "charlie123")
+        self.create_user("david", "david123")
 
     def create_user(self, username, password):
         password_hash = bcrypt.hashpw(

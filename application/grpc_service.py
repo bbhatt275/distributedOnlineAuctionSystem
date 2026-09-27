@@ -1,5 +1,6 @@
 import grpc
 
+from application import auction_manager
 from generated import auction_pb2
 from generated import auction_pb2_grpc
 from application.auth_service import AuthService
@@ -86,6 +87,13 @@ class AuctionService(auction_pb2_grpc.AuctionServiceServicer):
             if bid is not None:
                 response.auction_id = bid.auction_id
             return response
+
+        if request.HasField("close_auction"):
+            success, msg = self.auction_manager.close_auction(request.close_auction.auction_id)
+            return auction_pb2.StatusResponse(
+                success = success,
+                message = msg
+            )
 
         return auction_pb2.StatusResponse(
             success=False,

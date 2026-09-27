@@ -85,3 +85,12 @@ class AuctionClient:
             token = token
         )
         return self.stub.Logout(request)
+
+    def close_auction(self,token,auction_id):
+        request = auction_pb2.PostRequest(
+            token=token,
+            close_auction = auction_pb2.CloseAuctionRequest(
+                auction_id=auction_id
+            )
+        )
+        return self.stub.Post(request)
