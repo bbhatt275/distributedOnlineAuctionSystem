@@ -23,8 +23,8 @@
   </main>
 
   <script>
-    // Shared live-update channel. Individual pages register handlers on
-    // window.onAuctionEvent; the connection pill is updated here for all pages.
+    // Live updates. Pages hook in via window.onAuctionEvent; the connection
+    // pill is handled here for every page.
     (function () {
       if (!document.getElementById('conn')) return;
       const source = new EventSource('/events');
@@ -43,7 +43,7 @@
       };
     })();
 
-    // Countdown timers, driven off data-ends (unix seconds).
+    // Countdowns, driven off data-ends (unix seconds).
     setInterval(() => {
       document.querySelectorAll('[data-ends]').forEach(el => {
         const left = Math.max(0, Math.floor(el.dataset.ends - Date.now() / 1000));

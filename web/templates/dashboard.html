@@ -86,8 +86,8 @@
     });
   });
 
-  // Live updates: patch rows in place rather than reloading, so a bid landing
-  // while you are typing does not wipe your input.
+  // Patch rows in place instead of reloading, so a bid landing while you're
+  // typing doesn't wipe the input.
   window.onAuctionEvent = (data) => {
     if (!data.auction) return;
     const row = document.querySelector(`tr[data-auction="${data.auction.auction_id}"]`);

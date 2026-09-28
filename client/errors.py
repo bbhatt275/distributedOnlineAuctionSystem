@@ -1,13 +1,9 @@
-"""Typed client-side error taxonomy.
+"""Error types for the client.
 
-proto/auction.proto carries no error codes -- every failure arrives as
-``StatusResponse{success=false, message="some prose"}`` or as a raw
-``grpc.RpcError``. The rest of the client must not branch on prose, so
-everything funnels through here and comes out as an ``AuctionError`` with a
-machine-readable ``ErrorKind``.
-
-When the proto eventually grows a StatusCode enum (see docs/proto-gaps.md),
-only ``classify_status`` changes; callers stay as they are.
+auction.proto has no error codes, so failures arrive either as a raw
+grpc.RpcError or as StatusResponse(success=false, message="some prose").
+Both get funnelled through here into an AuctionError with an ErrorKind, so
+nothing outside this module has to match on message strings.
 """
 
 from __future__ import annotations
@@ -20,74 +16,56 @@ import grpc
 
 
 class ErrorKind(str, Enum):
-    # --- transport / availability -------------------------------------------
-    UNAVAILABLE = "unavailable"          # node down, refused, or unreachable
-    TIMEOUT = "timeout"                  # deadline exceeded
-    PARTITIONED = "partitioned"          # every known endpoint is unreachable
-    # --- consensus (Milestone 2; classified now so the UI is ready) ----------
-    NOT_LEADER = "not_leader"            # write sent to a follower
-    NO_QUORUM = "no_quorum"              # leader cannot commit, lost majority
+    UNAVAILABLE = "unavailable"
+    TIMEOUT = "timeout"
+    PARTITIONED = "partitioned"
+
+    # Milestone 2. Classified now so the UI doesn't need changing later.
+    NOT_LEADER = "not_leader"
+    NO_QUORUM = "no_quorum"
     CONSENSUS_TIMEOUT = "consensus_timeout"
-    # --- auth ----------------------------------------------------------------
-    UNAUTHENTICATED = "unauthenticated"  # bad/expired token, bad credentials
-    # --- domain --------------------------------------------------------------
+
+    UNAUTHENTICATED = "unauthenticated"
+
     NOT_FOUND = "not_found"
     BID_TOO_LOW = "bid_too_low"
     AUCTION_NOT_ACTIVE = "auction_not_active"
     INVALID_ARGUMENT = "invalid_argument"
-    # --- other ---------------------------------------------------------------
-    SERVER_BUG = "server_bug"            # server raised; retrying will not help
+
+    SERVER_BUG = "server_bug"
     UNKNOWN = "unknown"
 
     @property
-    def retryable(self) -> bool:
-        """Whether retrying the *same* call could plausibly succeed.
-
-        Deliberately excludes SERVER_BUG: a server-side exception is
-        deterministic, so retrying just multiplies load during a demo.
-        """
+    def retryable(self):
         return self in _RETRYABLE
 
     @property
-    def should_failover(self) -> bool:
-        """Whether to try a different endpoint rather than the same one."""
+    def should_failover(self):
         return self in _FAILOVER
 
 
-_RETRYABLE = frozenset(
-    {
-        ErrorKind.UNAVAILABLE,
-        ErrorKind.TIMEOUT,
-        ErrorKind.PARTITIONED,
-        ErrorKind.NOT_LEADER,
-        ErrorKind.NO_QUORUM,
-        ErrorKind.CONSENSUS_TIMEOUT,
-    }
-)
+# SERVER_BUG is deliberately excluded: a servicer exception is deterministic,
+# so retrying just multiplies load.
+_RETRYABLE = frozenset({
+    ErrorKind.UNAVAILABLE,
+    ErrorKind.TIMEOUT,
+    ErrorKind.PARTITIONED,
+    ErrorKind.NOT_LEADER,
+    ErrorKind.NO_QUORUM,
+    ErrorKind.CONSENSUS_TIMEOUT,
+})
 
-_FAILOVER = frozenset(
-    {
-        ErrorKind.UNAVAILABLE,
-        ErrorKind.TIMEOUT,
-        ErrorKind.PARTITIONED,
-        ErrorKind.NOT_LEADER,
-    }
-)
+_FAILOVER = frozenset({
+    ErrorKind.UNAVAILABLE,
+    ErrorKind.TIMEOUT,
+    ErrorKind.PARTITIONED,
+    ErrorKind.NOT_LEADER,
+})
 
 
 class AuctionError(Exception):
-    """A classified client-facing failure."""
 
-    def __init__(
-        self,
-        kind: ErrorKind,
-        message: str,
-        *,
-        endpoint: str | None = None,
-        attempts: int = 1,
-        cause: BaseException | None = None,
-        leader_hint: str | None = None,
-    ) -> None:
+    def __init__(self, kind, message, endpoint=None, attempts=1, cause=None, leader_hint=None):
         super().__init__(message)
         self.kind = kind
         self.message = message
@@ -97,16 +75,15 @@ class AuctionError(Exception):
         self.leader_hint = leader_hint
 
     @property
-    def retryable(self) -> bool:
+    def retryable(self):
         return self.kind.retryable
 
-    def __str__(self) -> str:
+    def __str__(self):
         where = f" [{self.endpoint}]" if self.endpoint else ""
         tries = f" after {self.attempts} attempts" if self.attempts > 1 else ""
         return f"{self.kind.value}{where}{tries}: {self.message}"
 
-    def user_message(self) -> str:
-        """Prose suitable for the CLI or a web flash message."""
+    def user_message(self):
         return _USER_MESSAGES.get(self.kind, self.message)
 
 
@@ -122,8 +99,6 @@ _USER_MESSAGES = {
 }
 
 
-# --- gRPC transport classification -------------------------------------------
-
 _GRPC_KIND = {
     grpc.StatusCode.UNAVAILABLE: ErrorKind.UNAVAILABLE,
     grpc.StatusCode.DEADLINE_EXCEEDED: ErrorKind.TIMEOUT,
@@ -137,26 +112,21 @@ _GRPC_KIND = {
 }
 
 
-def classify_rpc_error(exc: grpc.RpcError, *, endpoint: str | None = None) -> AuctionError:
-    """Map a raw gRPC transport failure onto an AuctionError."""
+def classify_rpc_error(exc, endpoint=None):
     code = exc.code() if hasattr(exc, "code") else grpc.StatusCode.UNKNOWN
     detail = (exc.details() if hasattr(exc, "details") else None) or str(exc)
 
     kind = _GRPC_KIND.get(code, ErrorKind.UNKNOWN)
 
-    # A servicer that raised an exception surfaces as UNKNOWN with
-    # "Exception calling application: ...". That is deterministic, so mark it
-    # SERVER_BUG rather than retrying it.
-    #
-    # This is not hypothetical: application/grpc_service.py Post() constructs
-    # StatusResponse(mesage=...) on the unauthenticated path (typo for
-    # "message"), so every Post with a stale token lands here instead of
-    # returning success=False. Tracked in docs/server-issues.md.
     if code == grpc.StatusCode.UNKNOWN and "Exception calling application" in detail:
-        if "no \"mesage\" field" in detail or 'has no "mesage"' in detail:
+        # grpc_service.py Post() builds StatusResponse(mesage=...) on the
+        # unauthenticated path (typo for "message"), so an expired token comes
+        # back as a servicer crash instead of success=False. Remove this once
+        # that's fixed -- see docs/server-issues.md.
+        if 'has no "mesage"' in detail:
             return AuctionError(
                 ErrorKind.UNAUTHENTICATED,
-                "Session rejected by server (server-side typo makes this surface as a crash)",
+                "Session rejected by server",
                 endpoint=endpoint,
                 cause=exc,
             )
@@ -165,15 +135,9 @@ def classify_rpc_error(exc: grpc.RpcError, *, endpoint: str | None = None) -> Au
     return AuctionError(kind, detail, endpoint=endpoint, cause=exc)
 
 
-# --- StatusResponse message classification -----------------------------------
-#
-# Matching on prose is brittle by nature. It is contained here on purpose, and
-# every pattern is anchored to a literal string in application/auction_manager.py
-# or application/grpc_service.py. If the server reworks its messages, only this
-# table needs updating -- and docs/proto-gaps.md proposes replacing it outright
-# with a StatusCode enum.
-
-_MESSAGE_PATTERNS: tuple[tuple[re.Pattern[str], ErrorKind], ...] = (
+# Matching on prose is fragile, so it's confined to this table. Every pattern
+# corresponds to a literal in application/auction_manager.py or grpc_service.py.
+_MESSAGE_PATTERNS = (
     (re.compile(r"not authenticated", re.I), ErrorKind.UNAUTHENTICATED),
     (re.compile(r"invalid credentials", re.I), ErrorKind.UNAUTHENTICATED),
     (re.compile(r"auction not found", re.I), ErrorKind.NOT_FOUND),
@@ -183,7 +147,7 @@ _MESSAGE_PATTERNS: tuple[tuple[re.Pattern[str], ErrorKind], ...] = (
     (re.compile(r"cannot be negative", re.I), ErrorKind.INVALID_ARGUMENT),
     (re.compile(r"must be positive", re.I), ErrorKind.INVALID_ARGUMENT),
     (re.compile(r"no valid (operation|query) specified", re.I), ErrorKind.INVALID_ARGUMENT),
-    # --- Milestone 2 shapes, matched ahead of the server implementing them ---
+    # Milestone 2 shapes, matched before the server emits them.
     (re.compile(r"not (the )?leader", re.I), ErrorKind.NOT_LEADER),
     (re.compile(r"no quorum|lost quorum", re.I), ErrorKind.NO_QUORUM),
     (re.compile(r"consensus timeout|commit timeout", re.I), ErrorKind.CONSENSUS_TIMEOUT),
@@ -192,16 +156,17 @@ _MESSAGE_PATTERNS: tuple[tuple[re.Pattern[str], ErrorKind], ...] = (
 _LEADER_HINT = re.compile(r"leader(?: is)?[:= ]+([\w.\-]+:\d+)", re.I)
 
 
-def classify_status(message: str, *, endpoint: str | None = None) -> AuctionError:
-    """Map a ``StatusResponse.message`` from a ``success=False`` reply."""
+def classify_status(message, endpoint=None):
     text = (message or "").strip() or "request failed"
+
     for pattern, kind in _MESSAGE_PATTERNS:
         if pattern.search(text):
-            hint_match = _LEADER_HINT.search(text)
+            hint = _LEADER_HINT.search(text)
             return AuctionError(
                 kind,
                 text,
                 endpoint=endpoint,
-                leader_hint=hint_match.group(1) if hint_match else None,
+                leader_hint=hint.group(1) if hint else None,
             )
+
     return AuctionError(ErrorKind.UNKNOWN, text, endpoint=endpoint)

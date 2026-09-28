@@ -104,7 +104,7 @@
         + `<td class="muted mono">${data.bid.timestamp}</td>`;
       row.classList.add('flashed');
 
-      // Keep the table sorted by amount descending.
+      // keep sorted by amount desc
       const rows = [...tbody.querySelectorAll('tr')];
       const after = rows.find(r => parseFloat(r.querySelector('.num').textContent) < data.bid.amount);
       after ? tbody.insertBefore(row, after) : tbody.appendChild(row);

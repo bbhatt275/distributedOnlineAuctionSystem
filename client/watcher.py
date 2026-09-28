@@ -1,22 +1,11 @@
-"""Real-time auction updates.
+"""Background polling that keeps the Store fresh.
 
-proto/auction.proto exposes no server-streaming RPC, so "real-time bid
-placement" is synthesised client-side: a background thread polls and the
-``Store`` diffs each snapshot into ``BID_PLACED`` / ``AUCTION_UPDATED`` /
-``OUTBID`` / ``AUCTION_CLOSED`` events. Subscribers cannot tell the difference
-between this and a real stream, which is the point -- when the server grows a
-``WatchAuctions`` streaming RPC (docs/proto-gaps.md) only this file changes.
+auction.proto has no streaming RPC, so live updates are faked by polling and
+letting the Store diff each snapshot into events. Subscribers can't tell the
+difference, which means only this file changes if a real stream shows up later.
 
 The interval adapts so the demo stays responsive without hammering the
-server's 10-worker thread pool:
-
-* an auction ending within ``urgent_window_s``      -> fast interval
-* anything changed within ``activity_window_s``     -> fast interval
-* otherwise                                         -> idle interval
-
-Backoff on failure is handled underneath by ``client.resilience``; the watcher
-additionally stops polling bid detail while the connection is partitioned, so
-a dead cluster does not produce a retry storm from every open browser tab.
+server's 10-worker pool.
 """
 
 from __future__ import annotations
@@ -25,90 +14,69 @@ import logging
 import threading
 import time
 
-from client.auction_client import AuctionClient
-from client.config import CONFIG, WatchConfig
-from client.errors import AuctionError, ErrorKind
+from client.config import CONFIG
+from client.errors import ErrorKind, AuctionError
 from client.state import ConnectionState, EventType
 
 log = logging.getLogger("auction.client.watcher")
 
 
 class AuctionWatcher:
-    """Background poller that keeps the Store fresh."""
 
-    def __init__(
-        self,
-        client: AuctionClient,
-        *,
-        config: WatchConfig | None = None,
-        track_bids: bool = True,
-    ) -> None:
+    def __init__(self, client, config=None, track_bids=True):
         self._client = client
         self._config = config or CONFIG.watch
         self._track_bids = track_bids
-        self._thread: threading.Thread | None = None
+        self._thread = None
         self._stop = threading.Event()
         self._wake = threading.Event()
         self._last_change = 0.0
         self._consecutive_failures = 0
-        # Auctions whose bid list we poll in detail. Polling bids for every
-        # auction is O(auctions) RPCs per tick, so detail is opt-in: the UI
-        # registers whichever auction the user is actually looking at.
-        self._focus: set[str] = set()
+        # Polling bids for every auction would be one RPC each per tick, so
+        # detail is opt-in -- the UI registers whatever the user is looking at.
+        self._focus = set()
         self._focus_lock = threading.Lock()
 
-    # -- lifecycle ------------------------------------------------------------
-
-    def start(self) -> None:
+    def start(self):
         if self._thread and self._thread.is_alive():
             return
         self._stop.clear()
         self._thread = threading.Thread(target=self._run, name="auction-watcher", daemon=True)
         self._thread.start()
-        log.info("watcher started (fast=%.1fs idle=%.1fs)", self._config.fast_interval_s, self._config.idle_interval_s)
 
-    def stop(self, timeout: float = 2.0) -> None:
+    def stop(self, timeout=2.0):
         self._stop.set()
         self._wake.set()
         if self._thread:
             self._thread.join(timeout=timeout)
-        log.info("watcher stopped")
 
-    def __enter__(self) -> "AuctionWatcher":
+    def __enter__(self):
         self.start()
         return self
 
-    def __exit__(self, *exc_info) -> None:
+    def __exit__(self, *exc_info):
         self.stop()
 
-    # -- focus ----------------------------------------------------------------
-
-    def focus(self, auction_id: str) -> None:
-        """Poll this auction's bid list in detail."""
+    def focus(self, auction_id):
         with self._focus_lock:
             self._focus.add(auction_id)
         self.refresh_now()
 
-    def unfocus(self, auction_id: str) -> None:
+    def unfocus(self, auction_id):
         with self._focus_lock:
             self._focus.discard(auction_id)
 
-    def refresh_now(self) -> None:
-        """Wake the loop immediately, e.g. right after the user bids."""
+    def refresh_now(self):
         self._wake.set()
 
-    # -- loop -----------------------------------------------------------------
-
-    def _run(self) -> None:
+    def _run(self):
         while not self._stop.is_set():
             interval = self._tick()
-            # Event-based sleep so refresh_now()/stop() are instant.
             self._wake.wait(timeout=interval)
             self._wake.clear()
 
-    def _tick(self) -> float:
+    def _tick(self):
         if not self._client.session.authenticated:
-            # Nothing to poll until someone logs in.
             return self._config.idle_interval_s
 
         try:
@@ -129,25 +97,24 @@ class AuctionWatcher:
         self._consecutive_failures = 0
         return self._next_interval()
 
-    def _handle_failure(self, exc: AuctionError) -> float:
+    def _handle_failure(self, exc):
         self._consecutive_failures += 1
-        log.warning("watcher poll failed (%s), failure #%d", exc.kind.value, self._consecutive_failures)
+        log.warning("poll failed (%s), failure #%d", exc.kind.value, self._consecutive_failures)
 
         if exc.kind is ErrorKind.UNAUTHENTICATED:
-            # Session is gone and could not be refreshed; idle until a new login.
             self._client.store.set_connection(ConnectionState.DISCONNECTED, exc.user_message())
             return self._config.idle_interval_s
 
-        # Widen the gap while the cluster is unhappy, capped, so a long outage
-        # does not spin. resilience.call has already backed off within the attempt.
-        penalty = min(2**self._consecutive_failures, 8)
+        # Back off while the cluster is unhappy. resilience.call has already
+        # backed off within the attempt itself.
+        penalty = min(2 ** self._consecutive_failures, 8)
         return min(self._config.idle_interval_s * penalty, 30.0)
 
-    def _bid_targets(self) -> list[str]:
+    def _bid_targets(self):
         with self._focus_lock:
             return sorted(self._focus)
 
-    def _next_interval(self) -> float:
+    def _next_interval(self):
         now = time.time()
         cfg = self._config
 
@@ -160,10 +127,8 @@ class AuctionWatcher:
 
         return cfg.idle_interval_s
 
-    # -- change tracking ------------------------------------------------------
-
-    def attach_activity_tracking(self) -> None:
-        """Subscribe to the store so observed changes speed the poll up."""
+    def attach_activity_tracking(self):
+        """Watch the store so observed changes speed the poll up."""
         interesting = {
             EventType.BID_PLACED,
             EventType.AUCTION_ADDED,
@@ -171,7 +136,7 @@ class AuctionWatcher:
             EventType.AUCTION_CLOSED,
         }
 
-        def on_event(event) -> None:
+        def on_event(event):
             if event.type in interesting:
                 self._last_change = time.time()
 

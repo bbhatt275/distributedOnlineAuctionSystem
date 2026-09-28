@@ -1,30 +1,14 @@
-"""Concurrent client simulator -- "Node 5" from the assignment's demo setup.
+"""Concurrent client simulator -- the assignment's "Node 5".
 
-Drives N independent clients against the application server to demonstrate
-concurrency control and, in Milestone 2, behaviour under leader failure.
-
-    # 20 bidders racing on one auction
     python -m client.simulator race --clients 20
-
-    # sustained load, survives a server restart mid-run
     python -m client.simulator soak --clients 5 --duration 60
 
-Each worker is a real ``AuctionClient`` with its own token, channel, node pool
-and retry state, so this exercises the same code path the CLI and web UI use.
+Each worker is a real AuctionClient with its own token, channel and retry
+state, so this exercises the same path the CLI and web UI use.
 
-What the race proves
---------------------
-N clients fire bids at the same auction simultaneously. The server serialises
-them under a lock and enforces strict monotonic increase, so afterwards:
-
-* exactly one bid is the winner,
-* the number of accepted bids equals the number of distinct increasing values
-  that actually landed,
-* no two accepted bids share an amount, and the auction's final highest bid
-  equals the maximum accepted bid.
-
-A violation of the last two would be the race condition the assignment asks us
-to prevent.
+The race mode is the concurrency-control demo: N clients bid on one auction at
+once, and afterwards we check the server serialised them properly -- no
+duplicate amounts, no lost updates, strictly increasing bids.
 """
 
 from __future__ import annotations
@@ -44,7 +28,7 @@ from client.errors import AuctionError, ErrorKind
 
 log = logging.getLogger("auction.simulator")
 
-# Seed users from application/auth_service.py.
+# From application/auth_service.py
 SEED_USERS = [
     ("alice", "alice123"),
     ("bob", "bob123"),
@@ -67,16 +51,17 @@ class Outcome:
 
 @dataclass
 class Report:
-    outcomes: list[Outcome] = field(default_factory=list)
+    outcomes: list = field(default_factory=list)
     lock: threading.Lock = field(default_factory=threading.Lock)
 
-    def add(self, outcome: Outcome) -> None:
+    def add(self, outcome):
         with self.lock:
             self.outcomes.append(outcome)
 
-    def summarise(self, title: str) -> None:
+    def summarise(self, title):
         with self.lock:
             outcomes = list(self.outcomes)
+
         if not outcomes:
             print("no results")
             return
@@ -88,7 +73,9 @@ class Report:
         print(f"  attempts      {len(outcomes)}")
         print(f"  accepted      {len(accepted)}")
         print(f"  rejected      {len(outcomes) - len(accepted)}")
-        if recovered := [o for o in accepted if o.recovered]:
+
+        recovered = [o for o in accepted if o.recovered]
+        if recovered:
             print(f"  recovered     {len(recovered)}  (ambiguous reply, confirmed by read-back)")
 
         print("\n  outcome breakdown")
@@ -101,21 +88,21 @@ class Report:
         print(f"    max  {latencies[-1]:.3f}")
 
 
-def _make_client(endpoints: str | None) -> AuctionClient:
+def _make_client(endpoints):
     config = ClientConfig(endpoints=[e.strip() for e in endpoints.split(",")]) if endpoints else None
     return AuctionClient(config=config)
 
 
-def _classify(exc: AuctionError | None, accepted: bool) -> str:
+def _classify(exc, accepted):
     if exc is not None:
         return exc.kind.value
     return "accepted" if accepted else "rejected_too_low"
 
 
-def race(clients: int, endpoints: str | None, base_price: float = 1000.0) -> int:
-    """All workers bid on one auction at the same instant."""
+def race(clients, endpoints, base_price=1000.0):
     setup = _make_client(endpoints)
     setup.login(*SEED_USERS[0])
+
     created = setup.create_auction(
         item_name=f"Race Item {int(time.time())}",
         description="Concurrency control demo",
@@ -125,17 +112,19 @@ def race(clients: int, endpoints: str | None, base_price: float = 1000.0) -> int
     if not created.created:
         print(f"could not create auction: {created.message}")
         return 1
+
     auction_id = created.auction_id
     print(f"auction {auction_id[:8]} created at {base_price:.2f}; releasing {clients} bidders\n")
 
     report = Report()
     barrier = threading.Barrier(clients)
-    workers: list[AuctionClient] = []
+    workers = []
 
-    def work(index: int) -> None:
+    def work(index):
         username, password = SEED_USERS[index % len(SEED_USERS)]
         client = _make_client(endpoints)
         workers.append(client)
+
         try:
             client.login(username, password)
         except AuctionError as exc:
@@ -144,10 +133,10 @@ def race(clients: int, endpoints: str | None, base_price: float = 1000.0) -> int
             return
 
         amount = base_price + (index + 1) * 10
-        barrier.wait()   # release everyone together
+        barrier.wait()
 
         started = time.perf_counter()
-        exc: AuctionError | None = None
+        exc = None
         accepted = recovered = False
         try:
             outcome = client.place_bid(auction_id, amount)
@@ -156,9 +145,8 @@ def race(clients: int, endpoints: str | None, base_price: float = 1000.0) -> int
             exc = err
         elapsed = time.perf_counter() - started
 
-        report.add(
-            Outcome(index, username, amount, accepted, _classify(exc, accepted), elapsed, recovered)
-        )
+        report.add(Outcome(index, username, amount, accepted,
+                           _classify(exc, accepted), elapsed, recovered))
 
     threads = [threading.Thread(target=work, args=(i,), name=f"bidder-{i}") for i in range(clients)]
     started = time.perf_counter()
@@ -171,7 +159,6 @@ def race(clients: int, endpoints: str | None, base_price: float = 1000.0) -> int
     report.summarise(f"race: {clients} concurrent bidders")
     print(f"  wall clock    {wall:.3f}s")
 
-    # --- consistency check --------------------------------------------------
     final = setup.get_auction(auction_id)
     bids = setup.get_bids(auction_id)
     accepted = [o for o in report.outcomes if o.accepted]
@@ -182,6 +169,7 @@ def race(clients: int, endpoints: str | None, base_price: float = 1000.0) -> int
     print(f"    final highest           {final.current_highest_bid:.2f} by {final.highest_bidder}")
 
     problems = []
+
     if len(bids) != len(accepted):
         problems.append(f"bid count mismatch: server {len(bids)} vs clients {len(accepted)}")
 
@@ -190,14 +178,9 @@ def race(clients: int, endpoints: str | None, base_price: float = 1000.0) -> int
         problems.append("duplicate bid amounts recorded (lost update)")
 
     if amounts and final.current_highest_bid != max(amounts):
-        problems.append(
-            f"highest bid {final.current_highest_bid} != max recorded bid {max(amounts)}"
-        )
+        problems.append(f"highest bid {final.current_highest_bid} != max recorded {max(amounts)}")
 
-    # Bids must form a strictly increasing sequence in the order the server
-    # accepted them; anything else means the critical section leaked.
-    by_time = sorted(bids, key=lambda b: b.amount)
-    if [b.amount for b in by_time] != sorted(set(amounts)):
+    if [b.amount for b in sorted(bids, key=lambda b: b.amount)] != sorted(set(amounts)):
         problems.append("accepted bids are not strictly increasing")
 
     if problems:
@@ -209,13 +192,15 @@ def race(clients: int, endpoints: str | None, base_price: float = 1000.0) -> int
 
     for client in workers + [setup]:
         client.close()
+
     return 1 if problems else 0
 
 
-def soak(clients: int, duration: int, endpoints: str | None) -> int:
-    """Sustained bidding, designed to be run while a node is killed."""
+def soak(clients, duration, endpoints):
+    """Sustained bidding. Meant to be run while you kill a node."""
     setup = _make_client(endpoints)
     setup.login(*SEED_USERS[0])
+
     created = setup.create_auction(
         item_name=f"Soak Item {int(time.time())}",
         description="Sustained load / failover demo",
@@ -223,15 +208,17 @@ def soak(clients: int, duration: int, endpoints: str | None) -> int:
         duration_seconds=duration + 60,
     )
     auction_id = created.auction_id
+
     print(f"auction {auction_id[:8]}; {clients} clients bidding for {duration}s")
     print("kill the application server at any point -- clients should recover\n")
 
     report = Report()
     stop = threading.Event()
 
-    def work(index: int) -> None:
+    def work(index):
         username, password = SEED_USERS[index % len(SEED_USERS)]
         client = _make_client(endpoints)
+
         try:
             client.login(username, password)
         except AuctionError as exc:
@@ -244,7 +231,7 @@ def soak(clients: int, duration: int, endpoints: str | None) -> int:
             amount = round(base + random.uniform(1, 50), 2)
 
             started = time.perf_counter()
-            exc: AuctionError | None = None
+            exc = None
             accepted = recovered = False
             try:
                 outcome = client.place_bid(auction_id, amount)
@@ -252,12 +239,11 @@ def soak(clients: int, duration: int, endpoints: str | None) -> int:
             except AuctionError as err:
                 exc = err
                 if err.kind is ErrorKind.PARTITIONED:
-                    time.sleep(1.0)  # cluster is gone; ease off
+                    time.sleep(1.0)
             elapsed = time.perf_counter() - started
 
-            report.add(
-                Outcome(index, username, amount, accepted, _classify(exc, accepted), elapsed, recovered)
-            )
+            report.add(Outcome(index, username, amount, accepted,
+                               _classify(exc, accepted), elapsed, recovered))
             stop.wait(random.uniform(0.2, 0.8))
 
         client.close()
@@ -270,11 +256,13 @@ def soak(clients: int, duration: int, endpoints: str | None) -> int:
         time.sleep(duration)
     except KeyboardInterrupt:
         print("\ninterrupted")
+
     stop.set()
     for t in threads:
         t.join(timeout=10)
 
     report.summarise(f"soak: {clients} clients / {duration}s")
+
     final = setup.get_auction(auction_id)
     if final:
         print(f"\n  final highest  {final.current_highest_bid:.2f} by {final.highest_bidder}")
@@ -282,7 +270,7 @@ def soak(clients: int, duration: int, endpoints: str | None) -> int:
     return 0
 
 
-def main(argv: list[str] | None = None) -> int:
+def main(argv=None):
     parser = argparse.ArgumentParser(description="Concurrent auction client simulator")
     parser.add_argument("mode", choices=["race", "soak"])
     parser.add_argument("--clients", type=int, default=10)

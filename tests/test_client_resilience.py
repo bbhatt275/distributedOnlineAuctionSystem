@@ -1,7 +1,4 @@
-"""Unit tests for retry, circuit breaking and failover.
-
-No server required -- a fake stub raises scripted gRPC errors.
-"""
+"""Retry / breaker / failover tests, using a fake stub that raises scripted errors."""
 
 from __future__ import annotations
 
@@ -46,11 +43,7 @@ def fast_config(**overrides) -> ClientConfig:
 
 
 def pool_for(config: ClientConfig) -> NodePool:
-    # stub_factory is irrelevant: invoke() ignores the stub in these tests.
     return NodePool(config, stub_factory=lambda channel: object())
-
-
-# --- error classification ----------------------------------------------------
 
 
 @pytest.mark.parametrize(
@@ -75,8 +68,8 @@ def test_servicer_exception_is_not_retried():
 
 
 def test_known_server_typo_is_reported_as_auth_failure():
-    # application/grpc_service.py Post() builds StatusResponse(mesage=...) on the
-    # unauthenticated path, so a stale token arrives as a servicer crash.
+    # grpc_service.py Post() has a 'mesage' typo, so a stale token arrives
+    # as a servicer crash. See docs/server-issues.md.
     err = classify_rpc_error(
         FakeRpcError(
             grpc.StatusCode.UNKNOWN,
@@ -106,9 +99,6 @@ def test_leader_hint_is_extracted():
     err = classify_status("not leader, leader is node-b:50052")
     assert err.kind is ErrorKind.NOT_LEADER
     assert err.leader_hint == "node-b:50052"
-
-
-# --- circuit breaker ---------------------------------------------------------
 
 
 def test_breaker_opens_after_threshold():
@@ -151,9 +141,6 @@ def test_success_resets_failure_count():
     breaker.record_success()
     breaker.record_failure()
     assert breaker.allows_request()
-
-
-# --- retry loop --------------------------------------------------------------
 
 
 def test_transient_failure_is_retried_then_succeeds():
@@ -235,9 +222,6 @@ def test_at_most_once_policy_does_retry_when_nothing_was_sent():
     assert len(attempts) == 2
 
 
-# --- failover ----------------------------------------------------------------
-
-
 def test_failover_moves_to_a_healthy_endpoint():
     config = fast_config(endpoints=["dead:1", "live:2"])
     pool = pool_for(config)
@@ -266,7 +250,7 @@ def test_leader_hint_redirects_without_round_robin():
         return "ok"
 
     assert call(pool, IDEMPOTENT("PlaceBid"), invoke, config=config) == "ok"
-    # Went straight to the hinted leader rather than trying "other:2" first.
+    # straight to the hinted leader, skipping other:2
     assert seen == ["follower:1", "leader:3"]
 
 

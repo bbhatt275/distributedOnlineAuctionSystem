@@ -1,13 +1,9 @@
-"""Session and token lifecycle.
+"""Session and token handling.
 
-The server's tokens (application/auth_service.py) are opaque 32-byte hex
-strings held in an in-memory dict with no expiry field, so the client cannot
-inspect a token to know whether it is still good -- it only finds out when a
-call is rejected. ``SessionManager`` therefore treats "the server said
-unauthenticated" as the single source of truth and, if credentials were
-supplied, transparently re-logs-in once and lets the caller replay.
-
-Credentials are held in memory only, never written to disk.
+Server tokens have no expiry field we can inspect (auth_service.py just keeps
+them in a dict), so the client only discovers a dead token when a call is
+rejected. If credentials were supplied we log in again and let the caller
+replay. Credentials stay in memory, never on disk.
 """
 
 from __future__ import annotations
@@ -16,58 +12,51 @@ import logging
 import threading
 
 from client.errors import AuctionError, ErrorKind, classify_status
-from client.resilience import IDEMPOTENT, NodePool, call
-from client.state import Store
+from client.resilience import IDEMPOTENT, call
 
 log = logging.getLogger("auction.client.auth")
 
 
 class SessionManager:
-    """Owns the token. Thread-safe: the watcher and UI share one instance."""
 
-    def __init__(self, pool: NodePool, store: Store, *, remember_credentials: bool = True) -> None:
+    def __init__(self, pool, store, remember_credentials=True):
         self._pool = pool
         self._store = store
         self._remember = remember_credentials
         self._lock = threading.RLock()
-        self._token: str | None = None
-        self._username: str | None = None
-        self._password: str | None = None
-        # Bumped on every successful login. Lets concurrent callers that all
-        # hit UNAUTHENTICATED at once collapse into a single re-login instead
-        # of stampeding the server with N logins.
+        self._token = None
+        self._username = None
+        self._password = None
+        # Bumped on each login so several callers that all hit an expired
+        # token collapse into one re-login instead of N.
         self._generation = 0
 
-    # -- accessors ------------------------------------------------------------
-
     @property
-    def token(self) -> str | None:
+    def token(self):
         with self._lock:
             return self._token
 
     @property
-    def username(self) -> str | None:
+    def username(self):
         with self._lock:
             return self._username
 
     @property
-    def authenticated(self) -> bool:
+    def authenticated(self):
         return self.token is not None
 
     @property
-    def generation(self) -> int:
+    def generation(self):
         with self._lock:
             return self._generation
 
-    def require_token(self) -> str:
+    def require_token(self):
         token = self.token
         if token is None:
             raise AuctionError(ErrorKind.UNAUTHENTICATED, "Not logged in")
         return token
 
-    # -- login / logout -------------------------------------------------------
-
-    def login(self, username: str, password: str) -> str:
+    def login(self, username, password):
         from generated import auction_pb2
 
         def invoke(stub, endpoint):
@@ -76,8 +65,8 @@ class SessionManager:
                 timeout=self._pool._config.rpc_timeout_s,
             )
             if not reply.status.success:
-                # Bad credentials are a permanent failure -- raising a
-                # non-retryable error stops the retry loop hammering login.
+                # Non-retryable, so the retry loop stops rather than hammering
+                # login with credentials that are simply wrong.
                 raise classify_status(reply.status.message, endpoint=endpoint)
             return reply
 
@@ -93,7 +82,7 @@ class SessionManager:
         log.info("logged in as %s", username)
         return reply.token
 
-    def logout(self) -> bool:
+    def logout(self):
         from generated import auction_pb2
 
         token = self.token
@@ -110,39 +99,36 @@ class SessionManager:
             reply = call(self._pool, IDEMPOTENT("Logout"), invoke, config=self._pool._config)
             success = reply.success
         except AuctionError as exc:
-            # The local session is dropped regardless: a logout that cannot
-            # reach the server still has to log the user out of this client.
-            log.warning("logout RPC failed (%s); clearing local session anyway", exc.kind.value)
+            # Still drop the local session -- a logout that can't reach the
+            # server should log you out of this client anyway.
+            log.warning("logout RPC failed (%s); clearing session locally", exc.kind.value)
             success = False
         finally:
             self.clear()
 
         return success
 
-    def clear(self) -> None:
+    def clear(self):
         with self._lock:
             self._token = None
             self._username = None
             self._password = None
         self._store.clear_session()
 
-    # -- re-authentication ----------------------------------------------------
-
-    def can_reauth(self) -> bool:
+    def can_reauth(self):
         with self._lock:
             return bool(self._username and self._password)
 
-    def reauth(self, seen_generation: int) -> bool:
-        """Re-login after an UNAUTHENTICATED reply.
+    def reauth(self, seen_generation):
+        """Log in again after a rejected token.
 
-        ``seen_generation`` is the generation the caller was using when it
-        failed. If the token has already been refreshed by someone else since
-        then, this is a no-op success and the caller simply retries with the
-        newer token.
+        seen_generation is what the caller was using when it failed; if the
+        token has already been refreshed since, this is a no-op and the caller
+        just retries with the newer one.
         """
         with self._lock:
             if seen_generation != self._generation:
-                return True  # somebody else already refreshed it
+                return True
             username, password = self._username, self._password
 
         if not (username and password):
@@ -150,7 +136,6 @@ class SessionManager:
 
         try:
             self.login(username, password)
-            log.info("re-authenticated as %s", username)
             return True
         except AuctionError as exc:
             log.error("re-authentication failed: %s", exc)

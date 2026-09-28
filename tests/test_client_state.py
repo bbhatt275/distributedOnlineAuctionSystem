@@ -1,7 +1,4 @@
-"""Unit tests for the observable client store.
-
-No server required -- these drive Store directly with AuctionView/BidView.
-"""
+"""Store tests. No server needed -- these drive Store directly."""
 
 from __future__ import annotations
 
@@ -93,10 +90,8 @@ def test_no_outbid_when_someone_else_is_overtaken(store, events):
     assert EventType.OUTBID not in [e.type for e in events]
 
 
-# --- staleness guards --------------------------------------------------------
-# These stand in for the version field the proto does not have. Without them,
-# an out-of-order poll reply (or a lagging Raft follower in Milestone 2) would
-# roll the UI backwards.
+# These stand in for the version field the proto doesn't have -- without them
+# an out-of-order poll reply rolls the UI backwards.
 
 
 def test_lower_highest_bid_on_active_auction_is_rejected_as_stale(store, events):
@@ -119,9 +114,6 @@ def test_closed_auction_cannot_reopen(store, events):
     assert store.auction("a1").active is False
 
 
-# --- bids --------------------------------------------------------------------
-
-
 def test_bids_deduplicated_by_id(store, events):
     store.apply_bids("a1", [make_bid("b1")])
     events.clear()
@@ -133,8 +125,8 @@ def test_bids_deduplicated_by_id(store, events):
 
 
 def test_bids_sorted_by_amount_not_timestamp(store):
-    # Bid.timestamp is whole seconds, so concurrent bids collide. Amount is a
-    # total order because the server enforces strictly increasing bids.
+    # timestamp is whole seconds so concurrent bids collide; amount is a
+    # total order because the server enforces increasing bids.
     store.apply_bids(
         "a1",
         [
@@ -144,9 +136,6 @@ def test_bids_sorted_by_amount_not_timestamp(store):
         ],
     )
     assert [b.amount for b in store.bids("a1")] == [300.0, 200.0, 100.0]
-
-
-# --- session / connection ----------------------------------------------------
 
 
 def test_logout_clears_auction_data(store):
