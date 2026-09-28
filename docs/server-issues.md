@@ -66,10 +66,36 @@ with `PERMISSION_DENIED` and self-bids with `SELF_BID_FORBIDDEN`. See
 
 ---
 
-## 3. Minor
+## 3. The application server never calls the LLM
 
-* **`escrow.py` and `llm_client.py` are empty.** Milestone 1 lists mock escrow
-  as a deliverable; the client currently has no escrow surface to call.
+`application/llm_client.py` is written and looks fine — it builds an
+`LLMRequest` and calls `GetLLMAnswer`. But **`LLMClient` is never instantiated
+outside `tests/test_application_llm.py`.** `grpc_service.py` does not import it,
+so nothing in the request path ever reaches the LLM node:
+
+```
+client  ->  application server     works
+            application server  ->  LLM     never called
+client  ->  LLM                            no route in auction.proto
+```
+
+Milestone 1 lists "LLM integration (sample queries)" as a deliverable, so this
+needs an owner. Two pieces are missing:
+
+1. `grpc_service.py` has to construct an `LLMClient`, build an `AuctionContext`
+   from the auction being asked about, and call it.
+2. `auction.proto` needs a way for the client to ask — either a new arm on
+   `PostRequest` (e.g. `AssistantQuery ask_assistant = 5;`) or a dedicated RPC
+   on `AuctionService`. Until one exists the client has no way to reach it; the
+   CLI's `ask` command is a stub for exactly this reason.
+
+The client side is ready once the route exists — it is a small change to
+`auction_client.py` plus a CLI/web surface.
+
+## 4. Minor
+
+* **`escrow.py` and `auction_service.py` are empty files.** Milestone 1 lists
+  mock escrow as a deliverable; the client has no escrow surface to call.
 * **`GetBids` on an unknown auction returns `None`**, not an empty list.
   `state_store.bids.get(auction_id)` returns `None`, which protobuf accepts as
   "unset" — so the reply is `success=True` with no bids, indistinguishable from
