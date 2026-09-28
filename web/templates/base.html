@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}Auction{% endblock %}</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <header class="bar">
+    <a class="brand" href="/">Distributed Auction</a>
+    {% if username %}
+      <div class="bar-right">
+        <span id="conn" class="pill {{ connection }}">{{ connection }}</span>
+        <span class="user">{{ username }}</span>
+        <form method="post" action="/logout"><button class="link">logout</button></form>
+      </div>
+    {% endif %}
+  </header>
+
+  <main>
+    {% block content %}{% endblock %}
+  </main>
+
+  <script>
+    // Shared live-update channel. Individual pages register handlers on
+    // window.onAuctionEvent; the connection pill is updated here for all pages.
+    (function () {
+      if (!document.getElementById('conn')) return;
+      const source = new EventSource('/events');
+      source.onmessage = (msg) => {
+        const data = JSON.parse(msg.data);
+        if (data.type === 'connection_changed' || data.connection) {
+          const pill = document.getElementById('conn');
+          const state = data.state || data.connection;
+          if (pill && state) { pill.textContent = state; pill.className = 'pill ' + state; }
+        }
+        if (window.onAuctionEvent) window.onAuctionEvent(data);
+      };
+      source.onerror = () => {
+        const pill = document.getElementById('conn');
+        if (pill) { pill.textContent = 'disconnected'; pill.className = 'pill disconnected'; }
+      };
+    })();
+
+    // Countdown timers, driven off data-ends (unix seconds).
+    setInterval(() => {
+      document.querySelectorAll('[data-ends]').forEach(el => {
+        const left = Math.max(0, Math.floor(el.dataset.ends - Date.now() / 1000));
+        if (el.dataset.closed === 'true') { el.textContent = 'closed'; return; }
+        el.textContent = left <= 0 ? 'ended'
+          : left < 60 ? left + 's'
+          : Math.floor(left / 60) + 'm' + String(left % 60).padStart(2, '0') + 's';
+        el.classList.toggle('urgent', left > 0 && left <= 30);
+      });
+    }, 1000);
+  </script>
+  {% block scripts %}{% endblock %}
+</body>
+</html>

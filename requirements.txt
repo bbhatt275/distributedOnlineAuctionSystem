@@ -6,3 +6,4 @@ uvicorn
 jinja2
 bcrypt
 pytest
+python-multipart

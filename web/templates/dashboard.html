@@ -1,0 +1,106 @@
+{% extends "base.html" %}
+{% block title %}Auctions{% endblock %}
+
+{% block content %}
+<div class="grid">
+  <section class="card">
+    <h1>Auctions</h1>
+    <table id="auctions">
+      <thead>
+        <tr><th>Item</th><th class="num">Current</th><th>Leader</th><th class="num">Ends</th><th></th></tr>
+      </thead>
+      <tbody>
+        {% for a in auctions %}
+        <tr data-auction="{{ a.auction_id }}" class="{{ 'closed' if not a.active }}">
+          <td>
+            <a href="/auction/{{ a.auction_id }}">{{ a.item_name }}</a>
+            <span class="muted mono">{{ a.auction_id[:8] }}</span>
+          </td>
+          <td class="num bid">{{ '%.2f'|format(a.current_highest_bid) }}</td>
+          <td class="leader">{{ a.highest_bidder or '—' }}</td>
+          <td class="num">
+            {% if a.active %}
+              <span data-ends="{{ a.end_time }}">—</span>
+            {% else %}
+              <span class="muted">closed</span>
+            {% endif %}
+          </td>
+          <td>
+            {% if a.active %}
+            <form class="inline bid-form" data-auction="{{ a.auction_id }}">
+              <input name="amount" type="number" step="0.01" placeholder="bid" required>
+              <button type="submit">Bid</button>
+            </form>
+            {% else %}
+              <span class="muted">won by {{ a.winner or '—' }}</span>
+            {% endif %}
+          </td>
+        </tr>
+        {% else %}
+        <tr><td colspan="5" class="muted">No auctions yet.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    <p id="flash" class="flash" hidden></p>
+  </section>
+
+  <aside class="card">
+    <h2>New auction</h2>
+    <form method="post" action="/auctions">
+      <label>Item <input name="item_name" required></label>
+      <label>Description <input name="description"></label>
+      <label>Starting price <input name="starting_price" type="number" step="0.01" value="100" required></label>
+      <label>Duration (s) <input name="duration_seconds" type="number" value="300" required></label>
+      <button type="submit">Create</button>
+    </form>
+
+    <h2>Cluster</h2>
+    <ul class="nodes">
+      {% for endpoint, breaker in health.items() %}
+        <li><span class="mono">{{ endpoint }}</span> <span class="pill {{ 'connected' if breaker == 'closed' else 'partitioned' }}">{{ breaker }}</span></li>
+      {% endfor %}
+    </ul>
+    <p class="hint">Breaker state per application-server node. Milestone&nbsp;2 will list all Raft peers here.</p>
+  </aside>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  const flash = (text, ok) => {
+    const el = document.getElementById('flash');
+    el.textContent = text; el.hidden = false;
+    el.className = 'flash ' + (ok ? 'ok' : 'bad');
+    setTimeout(() => { el.hidden = true; }, 4000);
+  };
+
+  document.querySelectorAll('.bid-form').forEach(form => {
+    form.addEventListener('submit', async (ev) => {
+      ev.preventDefault();
+      const id = form.dataset.auction;
+      const body = new FormData(form);
+      const res = await fetch(`/auction/${id}/bid`, { method: 'POST', body });
+      const data = await res.json();
+      flash(data.message + (data.recovered ? ' (recovered after ambiguous reply)' : ''), data.accepted);
+      if (data.accepted) form.reset();
+    });
+  });
+
+  // Live updates: patch rows in place rather than reloading, so a bid landing
+  // while you are typing does not wipe your input.
+  window.onAuctionEvent = (data) => {
+    if (!data.auction) return;
+    const row = document.querySelector(`tr[data-auction="${data.auction.auction_id}"]`);
+    if (!row) { if (data.type === 'auction_added') location.reload(); return; }
+
+    row.querySelector('.bid').textContent = data.auction.current_highest_bid.toFixed(2);
+    row.querySelector('.leader').textContent = data.auction.highest_bidder || '—';
+    row.classList.toggle('closed', !data.auction.active);
+    row.classList.add('flashed');
+    setTimeout(() => row.classList.remove('flashed'), 700);
+
+    if (data.type === 'outbid') flash(`Outbid on ${data.auction.item_name} by ${data.by}`, false);
+    if (data.type === 'auction_closed') flash(`${data.auction.item_name} closed — winner ${data.auction.winner || '—'}`, true);
+  };
+</script>
+{% endblock %}
