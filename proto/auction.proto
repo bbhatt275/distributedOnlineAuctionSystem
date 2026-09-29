@@ -159,6 +159,7 @@ message Auction {
 
     bool active = 9;
     string winner = 10;
+    string creator = 11;
 }
 
 

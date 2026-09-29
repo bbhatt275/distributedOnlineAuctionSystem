@@ -45,6 +45,11 @@ class AuctionService(auction_pb2_grpc.AuctionServiceServicer):
         # -----------------------------------------
 
         auction_context = None
+        additional_context = ""
+
+        # -----------------------------------------
+        # Case 1: Specific auction page
+        # -----------------------------------------
 
         if request.auction_id:
 
@@ -89,6 +94,62 @@ class AuctionService(auction_pb2_grpc.AuctionServiceServicer):
                     )
 
         # -----------------------------------------
+        # Case 2: Dashboard / Global chatbot
+        # No auction_id means use all active auctions
+        # -----------------------------------------
+
+        else:
+
+            active_auctions = self.auction_manager.get_auctions(
+                active_only=True
+            )
+
+            context_parts = []
+
+            for auction in active_auctions:
+
+                bids = self.auction_manager.get_bids(
+                    auction.auction_id
+                )
+
+                auction_text = f"""
+    Auction ID: {auction.auction_id}
+    Item: {auction.item_name}
+    Description: {auction.description}
+    Starting Price: ₹{auction.starting_price}
+    Current Highest Bid: ₹{auction.current_highest_bid}
+    Highest Bidder: {auction.highest_bidder}
+    Active: {auction.active}
+    Start Time: {auction.start_time}
+    End Time: {auction.end_time}
+    Number of Bids: {len(bids) if bids else 0}
+    """
+
+                # Add bid history
+                if bids:
+                    auction_text += "\nBid History:\n"
+
+                    for bid in bids:
+                        auction_text += (
+                            f"- Bidder: {bid.bidder}, "
+                            f"Amount: ₹{bid.amount}, "
+                            f"Timestamp: {bid.timestamp}\n"
+                        )
+
+                context_parts.append(auction_text)
+
+            if context_parts:
+                additional_context = (
+                        "The following are the currently ACTIVE auctions. "
+                        "Use this information when answering the user's query.\n\n"
+                        + "\n--------------------\n".join(context_parts)
+                )
+            else:
+                additional_context = (
+                    "There are currently no active auctions."
+                )
+
+        # -----------------------------------------
         # 4. Build requester context
         # -----------------------------------------
 
@@ -107,7 +168,8 @@ class AuctionService(auction_pb2_grpc.AuctionServiceServicer):
                 task_type=request.task_type,
                 query=request.query,
                 auction_context=auction_context,
-                requester_context=requester_context
+                requester_context=requester_context,
+                additional_context=additional_context
             )
 
         except Exception as e:
@@ -204,10 +266,25 @@ class AuctionService(auction_pb2_grpc.AuctionServiceServicer):
             return response
 
         if request.HasField("close_auction"):
-            success, msg = self.auction_manager.close_auction(request.close_auction.auction_id)
+            auction_id = request.close_auction.auction_id
+            auction = self.auction_manager.get_auction(auction_id)
+
+            if auction is None:
+                return auction_pb2.StatusResponse(
+                    success=False,
+                    message="Auction not found"
+                )
+
+            if auction.creator != user:
+                return auction_pb2.StatusResponse(
+                    success=False,
+                    message="You can only close auctions that you created"
+                )
+            success, msg = self.auction_manager.close_auction(auction_id)
             return auction_pb2.StatusResponse(
-                success = success,
-                message = msg
+                success=success,
+                message=msg,
+                auction_id=auction_id
             )
 
         return auction_pb2.StatusResponse(

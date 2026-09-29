@@ -4,7 +4,7 @@ import ollama
 
 
 # Override with LLM_MODEL to try a different one without editing code.
-MODEL_NAME = os.environ.get("LLM_MODEL", "qwen3.5:9b")
+MODEL_NAME = os.environ.get("LLM_MODEL", "llama3.2:3b")
 
 # qwen3.5 is a reasoning model. Left to itself it emits ~4000 thinking tokens
 # before answering, which at ~22 tok/s is over three minutes per reply. The
