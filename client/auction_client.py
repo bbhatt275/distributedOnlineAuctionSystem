@@ -404,7 +404,9 @@ class AuctionClient:
             return invoke
 
         try:
-            reply = self._authed(IDEMPOTENT("AskLLM"), build)
+            # at-most-once: a timeout may mean the model is still generating,
+            # and resending just queues another expensive run behind it.
+            reply = self._authed(AT_MOST_ONCE("AskLLM"), build)
         except AuctionError as exc:
             return AssistantReply("", task, error=exc.user_message())
 

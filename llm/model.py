@@ -1,7 +1,15 @@
+import os
+
 import ollama
 
 
-MODEL_NAME = "llama3.2:3b"
+# Override with LLM_MODEL to try a different one without editing code.
+MODEL_NAME = os.environ.get("LLM_MODEL", "qwen3.5:9b")
+
+# qwen3.5 is a reasoning model. Left to itself it emits ~4000 thinking tokens
+# before answering, which at ~22 tok/s is over three minutes per reply. The
+# answers are no better for it, so thinking is off unless LLM_THINKING=1.
+THINKING = os.environ.get("LLM_THINKING", "0") == "1"
 
 
 class LLMModel:
@@ -43,6 +51,7 @@ class LLMModel:
             model=self.model_name,
             messages=messages,
             options=options,
+            think=THINKING,
         )
 
         return response["message"]["content"]
