@@ -45,6 +45,25 @@ class CreateOutcome:
     recovered: bool = False
 
 
+# Labels for the four LLMTaskType values in proto/llm.proto.
+ASSISTANT_TASKS = (
+    ("AUCTION_FAQ", "Ask a question", "Rules, bidding, item details"),
+    ("ITEM_DESCRIPTION", "Write a description", "Generate a listing description"),
+    ("AUCTION_SUMMARY", "Summarise auction", "Price, activity, time left"),
+    ("RESULT_SUMMARY", "Summarise result", "Winner, final price, bid count"),
+)
+
+ASSISTANT_TASK_IDS = {t[0] for t in ASSISTANT_TASKS}
+
+
+@dataclass
+class AssistantReply:
+    answer: str
+    task: str
+    connected: bool = True
+    error: str | None = None
+
+
 class AuctionClient:
 
     def __init__(self, store=None, pool=None, session=None, config=None):
@@ -318,6 +337,72 @@ class AuctionClient:
         self._authed(IDEMPOTENT("CloseAuction"), build)
         self.get_auction(auction_id)
         return True
+
+    def assistant_route_available(self):
+        """Whether the app server exposes a way to reach the LLM.
+
+        There isn't one yet: auction.proto has no arm on PostRequest and no
+        RPC for it, and grpc_service.py never builds an LLMClient. The check
+        starts returning True the moment somebody adds the field, so the
+        widget lights up without further client changes.
+        """
+        from generated import auction_pb2
+        fields = {f.name for f in auction_pb2.PostRequest.DESCRIPTOR.fields}
+        return "ask_assistant" in fields
+
+    def ask_assistant(self, task, query, auction_id=None):
+        """Send a question to the LLM via the application server.
+
+        Falls back to a placeholder while the route is missing -- see
+        docs/server-issues.md for what the server side still needs.
+        """
+        if task not in ASSISTANT_TASK_IDS:
+            raise ValueError(f"unknown task {task!r}")
+
+        query = (query or "").strip()
+        if not query:
+            raise ValueError("query is empty")
+
+        if not self.assistant_route_available():
+            return AssistantReply(
+                answer=(
+                    "The assistant isn't connected yet. The LLM server is running and "
+                    "application/llm_client.py can talk to it, but the application server "
+                    "doesn't expose a route for the client to ask through -- auction.proto "
+                    "needs an ask_assistant arm on PostRequest, and grpc_service.py needs to "
+                    "call LLMClient. Nothing on the client side is blocking this."
+                ),
+                task=task,
+                connected=False,
+            )
+
+        from generated import auction_pb2
+
+        # Shape guessed from the surrounding proto conventions. Confirm the
+        # field names against whatever actually lands before relying on it.
+        def build(token):
+            def invoke(stub, endpoint):
+                request = auction_pb2.PostRequest(token=token)
+                request.ask_assistant.task_type = task
+                request.ask_assistant.query = query
+                if auction_id:
+                    request.ask_assistant.auction_id = auction_id
+
+                reply = stub.Post(request, timeout=self.config.rpc_timeout_s)
+                if not reply.success:
+                    raise classify_status(reply.message, endpoint=endpoint)
+                return reply
+            return invoke
+
+        try:
+            reply = self._authed(IDEMPOTENT("AskAssistant"), build)
+        except AuctionError as exc:
+            return AssistantReply("", task, connected=True, error=exc.user_message())
+
+        # StatusResponse has no answer field today, so the text arrives in
+        # message unless a dedicated field is added alongside the route.
+        answer = getattr(reply, "answer", "") or reply.message
+        return AssistantReply(answer, task)
 
     def close(self):
         self.pool.close()
