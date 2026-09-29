@@ -94,3 +94,15 @@ class AuctionClient:
             )
         )
         return self.stub.Post(request)
+
+    def ask_llm(self, token, query, task_type, auction_id=""):
+        request = auction_pb2.AskLLMRequest(
+            token=token,
+            query=query,
+            task_type=task_type,
+            auction_id=auction_id
+        )
+
+        response = self.stub.AskLLM(request)
+
+        return response

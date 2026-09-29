@@ -1,6 +1,6 @@
-import grpc
-
-from application import auction_manager
+from application.llm_client import LLMClient
+from generated import llm_pb2
+import uuid
 from generated import auction_pb2
 from generated import auction_pb2_grpc
 from application.auth_service import AuthService
@@ -12,6 +12,121 @@ class AuctionService(auction_pb2_grpc.AuctionServiceServicer):
         self.auth_service = AuthService()
         self.state_store = StateStore()
         self.auction_manager = AuctionManager(self.state_store)
+        self.llm_client = LLMClient()
+
+    def AskLLM(self, request, context):
+
+        # -----------------------------------------
+        # 1. Authenticate user
+        # -----------------------------------------
+
+        user = self.auth_service.validate_token(request.token)
+
+        if user is None:
+            return auction_pb2.AskLLMResponse(
+                success=False,
+                message="Not authenticated",
+                answer=""
+            )
+
+        # -----------------------------------------
+        # 2. Validate query
+        # -----------------------------------------
+
+        if not request.query.strip():
+            return auction_pb2.AskLLMResponse(
+                success=False,
+                message="Query cannot be empty",
+                answer=""
+            )
+
+        # -----------------------------------------
+        # 3. Build auction context
+        # -----------------------------------------
+
+        auction_context = None
+
+        if request.auction_id:
+
+            auction = self.auction_manager.get_auction(
+                request.auction_id
+            )
+
+            if auction is None:
+                return auction_pb2.AskLLMResponse(
+                    success=False,
+                    message="Auction not found",
+                    answer=""
+                )
+
+            bids = self.auction_manager.get_bids(
+                request.auction_id
+            )
+
+            auction_context = llm_pb2.AuctionContext(
+                auction_id=auction.auction_id,
+                item_name=auction.item_name,
+                item_description=auction.description,
+                starting_price=auction.starting_price,
+                current_highest_bid=auction.current_highest_bid,
+                currency="INR",
+                active=auction.active,
+                start_time=auction.start_time,
+                end_time=auction.end_time,
+                bid_count=len(bids) if bids else 0,
+                highest_bidder=auction.highest_bidder,
+                winner=auction.winner
+            )
+
+            # Add bid history
+            if bids:
+                for bid in bids:
+                    auction_context.bids.add(
+                        bid_id=bid.bid_id,
+                        bidder=bid.bidder,
+                        amount=bid.amount,
+                        timestamp=bid.timestamp
+                    )
+
+        # -----------------------------------------
+        # 4. Build requester context
+        # -----------------------------------------
+
+        requester_context = llm_pb2.RequesterContext(
+            user_id=user
+        )
+
+        # -----------------------------------------
+        # 5. Call LLM server
+        # -----------------------------------------
+
+        try:
+
+            response = self.llm_client.get_answer(
+                request_id=str(uuid.uuid4()),
+                task_type=request.task_type,
+                query=request.query,
+                auction_context=auction_context,
+                requester_context=requester_context
+            )
+
+        except Exception as e:
+
+            return auction_pb2.AskLLMResponse(
+                success=False,
+                message=f"LLM server error: {str(e)}",
+                answer=""
+            )
+
+        # -----------------------------------------
+        # 6. Return LLM response to client
+        # -----------------------------------------
+
+        return auction_pb2.AskLLMResponse(
+            success=response.success,
+            message=response.message,
+            answer=response.answer
+        )
 
     def Login(self, request, context):
         token = self.auth_service.login(request.username, request.password)
