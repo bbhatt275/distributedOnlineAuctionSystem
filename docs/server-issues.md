@@ -66,31 +66,28 @@ with `PERMISSION_DENIED` and self-bids with `SELF_BID_FORBIDDEN`. See
 
 ---
 
-## 3. The application server never calls the LLM
+## 3. LLM integration -- resolved
 
-`application/llm_client.py` is written and looks fine — it builds an
-`LLMRequest` and calls `GetLLMAnswer`. But **`LLMClient` is never instantiated
-outside `tests/test_application_llm.py`.** `grpc_service.py` does not import it,
-so nothing in the request path ever reaches the LLM node:
+Fixed on feature/application-auction (1ab5044, "integrated llm"). The server
+now exposes a dedicated RPC rather than an arm on PostRequest:
 
-```
-client  ->  application server     works
-            application server  ->  LLM     never called
-client  ->  LLM                            no route in auction.proto
+```proto
+rpc AskLLM(AskLLMRequest) returns (AskLLMResponse);
 ```
 
-Milestone 1 lists "LLM integration (sample queries)" as a deliverable, so this
-needs an owner. Two pieces are missing:
+`AskLLM` authenticates the token, builds an `llm.AuctionContext` (including bid
+history) when an `auction_id` is supplied, adds a `RequesterContext`, and calls
+`LLMClient`. `AskLLMResponse` carries a real `answer` field, so the answer no
+longer has to travel in `message`.
 
-1. `grpc_service.py` has to construct an `LLMClient`, build an `AuctionContext`
-   from the auction being asked about, and call it.
-2. `auction.proto` needs a way for the client to ask — either a new arm on
-   `PostRequest` (e.g. `AssistantQuery ask_assistant = 5;`) or a dedicated RPC
-   on `AuctionService`. Until one exists the client has no way to reach it; the
-   CLI's `ask` command is a stub for exactly this reason.
+The client is wired to it and the full chain is verified working:
+client -> web -> application server -> LLM node.
 
-The client side is ready once the route exists — it is a small change to
-`auction_client.py` plus a CLI/web surface.
+One rough edge: when the LLM node is down, `AskLLM` returns
+`"LLM server error: <_InactiveRpcError of RPC that terminated with: ...>"` --
+the raw repr of the gRPC exception. It is unreadable in a chat bubble, so the
+client collapses the common cases in `_tidy_llm_error`. Returning the gRPC
+status code instead of `str(e)` would let that helper go away.
 
 ## 4. Minor
 

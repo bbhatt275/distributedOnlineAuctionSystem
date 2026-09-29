@@ -68,6 +68,8 @@ class WatchConfig:
 class ClientConfig:
     endpoints: list[str] = field(default_factory=_default_endpoints)
     rpc_timeout_s: float = field(default_factory=lambda: _env_float("AUCTION_RPC_TIMEOUT", 5.0))
+    # Local model generation is far slower than an auction RPC.
+    llm_timeout_s: float = field(default_factory=lambda: _env_float("AUCTION_LLM_TIMEOUT", 120.0))
     retry: RetryConfig = field(default_factory=RetryConfig)
     breaker: BreakerConfig = field(default_factory=BreakerConfig)
     watch: WatchConfig = field(default_factory=WatchConfig)
