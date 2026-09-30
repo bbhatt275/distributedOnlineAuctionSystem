@@ -32,8 +32,8 @@ class AuctionWatcher:
         self._wake = threading.Event()
         self._last_change = 0.0
         self._consecutive_failures = 0
-        # Polling bids for every auction would be one RPC each per tick, so
-        # detail is opt-in -- the UI registers whatever the user is looking at.
+        # Requesting the bid history of every auction would cost one call each
+        # time, so an interface registers only the auction being viewed.
         self._focus = set()
         self._focus_lock = threading.Lock()
 
@@ -105,8 +105,8 @@ class AuctionWatcher:
             self._client.store.set_connection(ConnectionState.DISCONNECTED, exc.user_message())
             return self._config.idle_interval_s
 
-        # Back off while the cluster is unhappy. resilience.call has already
-        # backed off within the attempt itself.
+        # The interval widens while servers are failing. Each attempt has
+        # already backed off internally before reaching this point.
         penalty = min(2 ** self._consecutive_failures, 8)
         return min(self._config.idle_interval_s * penalty, 30.0)
 

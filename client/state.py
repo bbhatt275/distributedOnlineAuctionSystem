@@ -90,8 +90,8 @@ class AuctionView:
         return max(0, int(self.end_time - now))
 
     def has_bids(self):
-        # current_highest_bid is seeded to starting_price, so it can't tell us
-        # this on its own.
+        # The current highest bid is seeded to the starting price, so it
+        # cannot indicate on its own whether anyone has bid.
         return bool(self.highest_bidder)
 
 
@@ -149,8 +149,8 @@ class Store:
         with self._lock:
             listeners = list(self._subscribers)
 
-        # Dispatched outside the lock -- the CLI renderer calls back into the
-        # store, which would re-enter while held.
+        # Events are dispatched outside the lock, because a subscriber such as
+        # the command line renderer reads from the store while handling one.
         for event in events:
             for listener in listeners:
                 try:
@@ -190,9 +190,9 @@ class Store:
         with self._lock:
             found = list(self._bids.get(auction_id, {}).values())
 
-        # Sorted by amount, not timestamp -- Bid.timestamp is whole seconds so
-        # concurrent bids all collide. Amount is a total order because the
-        # server enforces strictly increasing bids.
+        # Bids are ordered by amount rather than by time. Timestamps have
+        # whole second resolution, so simultaneous bids share one, whereas
+        # amounts are strictly increasing and therefore order them reliably.
         return sorted(found, key=lambda b: b.amount, reverse=True)
 
     def set_session(self, username, token):

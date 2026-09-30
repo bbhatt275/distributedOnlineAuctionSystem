@@ -73,8 +73,8 @@ def _generate_into(out_dir):
     _run_protoc(out_dir)
     _rewrite_imports(out_dir)
 
-    # Don't clobber an existing one, and don't let --check trip over it --
-    # it isn't protoc output.
+    # An existing file is left alone, and it is excluded from the staleness
+    # check because the compiler does not produce it.
     init = out_dir / "__init__.py"
     if not init.exists():
         init.write_text(_INIT_DOC)
@@ -94,17 +94,17 @@ def check():
 
         missing = expected - actual
         if missing:
-            print(f"stale: missing {sorted(missing)}", file=sys.stderr)
+            print(f"these are missing: {sorted(missing)}", file=sys.stderr)
             return 1
 
         extra = actual - expected
         if extra:
-            print(f"stale: unexpected {sorted(extra)}", file=sys.stderr)
+            print(f"these are unexpected: {sorted(extra)}", file=sys.stderr)
             return 1
 
         _, mismatch, errors = filecmp.cmpfiles(fresh, OUT_DIR, sorted(expected), shallow=False)
         if mismatch or errors:
-            print(f"stale: differs from proto/ -> {sorted(mismatch + errors)}", file=sys.stderr)
+            print(f"these differ from proto/: {sorted(mismatch + errors)}", file=sys.stderr)
             print("run: python scripts/generate_proto.py", file=sys.stderr)
             return 1
 
@@ -113,8 +113,8 @@ def check():
 
 
 def generate():
-    # Clear old output first, so deleting a .proto doesn't leave an orphan
-    # stub behind that still imports fine and hides the deletion.
+    # Previous output is cleared first. Otherwise removing a definition would
+    # leave a stub behind that still imports and hides the removal.
     if OUT_DIR.exists():
         for path in OUT_DIR.glob("*_pb2*.py"):
             path.unlink()

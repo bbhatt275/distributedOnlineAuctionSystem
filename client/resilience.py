@@ -3,12 +3,13 @@
 Retry policy is per operation rather than global, because auction.proto has no
 idempotency key and not every write is safe to resend:
 
-  PlaceBid      safe -- the server rejects amount <= current_highest_bid, so a
-                resend of the same amount can't take effect twice
-  CloseAuction  safe -- sets active=False, applying it twice is a no-op
-  Get*, Logout  safe -- reads / idempotent
-  Login         safe, though each retry mints a new token and orphans the old
-  CreateAuction NOT safe -- new uuid4 per call, a retry makes a second auction
+Placing a bid is safe to repeat, because the server rejects any bid that does
+not exceed the current highest, so a duplicate cannot take effect twice.
+Closing an auction is safe, because applying it twice has no further effect.
+Reads and signing out are safe. Signing in is safe, although each attempt
+issues a new token and abandons the previous one. Creating an auction is not
+safe, because the server generates a new identifier on every call and a repeat
+would produce a second auction.
 """
 
 from __future__ import annotations
@@ -51,8 +52,8 @@ AT_MOST_ONCE = RetryPolicy.at_most_once
 def _never_reached_server(err):
     """True when we can prove the request never got to the server.
 
-    Note that a timeout is not included -- the server may have applied the
-    write and just answered slowly.
+    A timeout does not qualify, because the server may have applied the change
+    and merely answered slowly.
     """
     if err.kind is not ErrorKind.UNAVAILABLE:
         return False
@@ -96,7 +97,7 @@ class CircuitBreaker:
                 and time.monotonic() - self._opened_at >= self._config.reset_timeout_s):
             self._state = BreakerState.HALF_OPEN
             self._successes = 0
-            log.info("breaker %s -> half_open", self.endpoint)
+            log.info("breaker for %s is probing after cooldown", self.endpoint)
         return self._state
 
     def allows_request(self):
@@ -108,7 +109,7 @@ class CircuitBreaker:
             if self._state is BreakerState.HALF_OPEN:
                 self._successes += 1
                 if self._successes >= self._config.success_threshold:
-                    log.info("breaker %s -> closed", self.endpoint)
+                    log.info("breaker for %s closed, endpoint healthy again", self.endpoint)
                     self._state = BreakerState.CLOSED
                     self._failures = 0
             else:
@@ -121,10 +122,10 @@ class CircuitBreaker:
             if self._state is BreakerState.HALF_OPEN:
                 self._state = BreakerState.OPEN
                 self._opened_at = time.monotonic()
-                log.warning("breaker %s -> open (probe failed)", self.endpoint)
+                log.warning("breaker for %s reopened, probe failed", self.endpoint)
             elif self._failures >= self._config.failure_threshold:
                 if self._state is not BreakerState.OPEN:
-                    log.warning("breaker %s -> open after %d failures", self.endpoint, self._failures)
+                    log.warning("breaker for %s opened after %d failures", self.endpoint, self._failures)
                 self._state = BreakerState.OPEN
                 self._opened_at = time.monotonic()
 
@@ -201,7 +202,7 @@ class NodePool:
             if node.endpoint == endpoint:
                 with self._pref_lock:
                     if self._preferred != i:
-                        log.info("preferred endpoint -> %s", endpoint)
+                        log.info("now preferring endpoint %s", endpoint)
                     self._preferred = i
                 return
 
@@ -229,8 +230,9 @@ class NodePool:
 
 
 def _backoff_delay(attempt, cfg):
-    # Full jitter. Without it, simulator clients that lose a node together all
-    # retry on the same schedule and thunder the replacement.
+    # The delay is fully randomised. Without that, clients which lose a server
+    # at the same moment would all retry on the same schedule and overwhelm its
+    # replacement together.
     ceiling = min(cfg.max_backoff_s, cfg.initial_backoff_s * (cfg.multiplier ** attempt))
     return random.uniform(0, ceiling) if cfg.jitter else ceiling
 
@@ -289,8 +291,8 @@ def call(pool, policy, invoke, config=None, on_retry=None):
             on_retry(err, attempt, delay)
         time.sleep(delay)
 
-    # Everything being down is a partition, which is worth distinguishing from
-    # a single node going away.
+    # Losing every server is reported separately from losing one of them,
+    # because the two situations call for different responses.
     if last.kind in (ErrorKind.UNAVAILABLE, ErrorKind.TIMEOUT) and pool.all_unavailable():
         last = AuctionError(
             ErrorKind.PARTITIONED,

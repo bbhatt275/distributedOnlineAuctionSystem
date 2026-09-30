@@ -5,7 +5,8 @@
 The browser doesn't speak gRPC. It talks HTTP and SSE to this process, which
 holds the gRPC client and forwards to the application server:
 
-    browser --HTTP/SSE--> web.app --gRPC--> application server
+    The browser talks to this process over HTTP and server-sent events, and
+    this process talks to the application server over gRPC.
 
 Each browser session gets its own AuctionClient, so two tabs logged in as
 different users behave like two separate client nodes.
@@ -57,7 +58,8 @@ class BrowserSession:
             try:
                 q.put_nowait(payload)
             except queue.Full:
-                # Tab stopped draining. Drop the oldest rather than grow.
+                # A browser tab has stopped reading, so the oldest event is
+                # discarded rather than allowing the queue to grow.
                 try:
                     q.get_nowait()
                     q.put_nowait(payload)
