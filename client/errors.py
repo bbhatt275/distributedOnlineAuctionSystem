@@ -20,7 +20,8 @@ class ErrorKind(str, Enum):
     TIMEOUT = "timeout"
     PARTITIONED = "partitioned"
 
-    # Milestone 2. Classified now so the UI doesn't need changing later.
+    # The following kinds describe consensus failures. The server does not
+    # report them at present.
     NOT_LEADER = "not_leader"
     NO_QUORUM = "no_quorum"
     CONSENSUS_TIMEOUT = "consensus_timeout"
@@ -44,8 +45,8 @@ class ErrorKind(str, Enum):
         return self in _FAILOVER
 
 
-# SERVER_BUG is deliberately excluded: a servicer exception is deterministic,
-# so retrying just multiplies load.
+# SERVER_BUG is excluded because an exception raised inside the server is
+# deterministic, so repeating the call only adds load.
 _RETRYABLE = frozenset({
     ErrorKind.UNAVAILABLE,
     ErrorKind.TIMEOUT,
@@ -118,25 +119,16 @@ def classify_rpc_error(exc, endpoint=None):
 
     kind = _GRPC_KIND.get(code, ErrorKind.UNKNOWN)
 
+    # An exception raised inside the server produces the same result every
+    # time, so the failure is marked as one that should not be repeated.
     if code == grpc.StatusCode.UNKNOWN and "Exception calling application" in detail:
-        # grpc_service.py Post() builds StatusResponse(mesage=...) on the
-        # unauthenticated path (typo for "message"), so an expired token comes
-        # back as a servicer crash instead of success=False. Remove this once
-        # that's fixed -- see docs/server-issues.md.
-        if 'has no "mesage"' in detail:
-            return AuctionError(
-                ErrorKind.UNAUTHENTICATED,
-                "Session rejected by server",
-                endpoint=endpoint,
-                cause=exc,
-            )
         kind = ErrorKind.SERVER_BUG
 
     return AuctionError(kind, detail, endpoint=endpoint, cause=exc)
 
 
-# Matching on prose is fragile, so it's confined to this table. Every pattern
-# corresponds to a literal in application/auction_manager.py or grpc_service.py.
+# Matching on message text is fragile, so it is confined to this one table.
+# Each pattern corresponds to a message produced by the application server.
 _MESSAGE_PATTERNS = (
     (re.compile(r"not authenticated", re.I), ErrorKind.UNAUTHENTICATED),
     (re.compile(r"invalid credentials", re.I), ErrorKind.UNAUTHENTICATED),
@@ -147,7 +139,8 @@ _MESSAGE_PATTERNS = (
     (re.compile(r"cannot be negative", re.I), ErrorKind.INVALID_ARGUMENT),
     (re.compile(r"must be positive", re.I), ErrorKind.INVALID_ARGUMENT),
     (re.compile(r"no valid (operation|query) specified", re.I), ErrorKind.INVALID_ARGUMENT),
-    # Milestone 2 shapes, matched before the server emits them.
+    # The following patterns describe consensus failures that the server does
+    # not report at present.
     (re.compile(r"not (the )?leader", re.I), ErrorKind.NOT_LEADER),
     (re.compile(r"no quorum|lost quorum", re.I), ErrorKind.NO_QUORUM),
     (re.compile(r"consensus timeout|commit timeout", re.I), ErrorKind.CONSENSUS_TIMEOUT),

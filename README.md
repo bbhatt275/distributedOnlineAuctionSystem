@@ -22,7 +22,7 @@ Milestone 1 — one application server, LLM on a separate node:
            ▼
     ┌──────────────────────┐        ┌──────────────┐
     │ application server   │──gRPC─▶│  LLM server  │──▶ Ollama
-    │ auth · auctions      │        │  qwen3.5:9b  │
+    │ auth · auctions      │        │   (Ollama)   │
     │ bidding · timer      │        └──────────────┘
     └──────────────────────┘
            ▲
@@ -57,7 +57,7 @@ See **[docs/setup.md](docs/setup.md)** for the full walkthrough. Short version:
 
 ```bash
 python -m venv .venv && .venv/bin/pip install -r requirements.txt
-brew install ollama && ollama serve && ollama pull qwen3.5:9b
+brew install ollama && ollama serve && ollama pull <model>
 
 .venv/bin/python -m llm.server                 # :50052
 .venv/bin/python -m application.server         # :50051
@@ -87,7 +87,7 @@ Seed users are in `application/auth_service.py`.
 | Concurrency control | done — verified with 20 simultaneous bidders |
 | LLM integration | done — four task types, context-aware |
 | Project structure and setup | done |
-| Mock escrow | not started (`application/escrow.py` is empty) |
+| Mock escrow | done — reserve, release, refund on auction close |
 
 Concurrency is checked by the simulator rather than asserted:
 

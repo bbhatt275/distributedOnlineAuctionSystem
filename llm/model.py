@@ -2,8 +2,6 @@ import os
 import ollama
 
 MODEL_NAME = os.environ.get("LLM_MODEL", "llama3.2:3b")
-#For Think buffer
-THINKING = os.environ.get("LLM_THINKING", "0") == "1"
 
 
 class LLMModel:

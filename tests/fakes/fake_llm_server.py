@@ -3,8 +3,9 @@
     python -m tests.fakes.fake_llm_server
 
 Serves llm.LLMService on :50052 and answers from the AuctionContext the
-application server sends. Deterministic on purpose -- this verifies wiring,
-not model quality. Run the real llm/server.py for anything else.
+application server sends. The answers are fixed, so this confirms that the
+calls are connected correctly rather than saying anything about the model.
+The real server in llm/ should be used for anything else.
 """
 
 from concurrent import futures

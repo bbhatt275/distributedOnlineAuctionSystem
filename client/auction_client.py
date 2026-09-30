@@ -45,7 +45,7 @@ class CreateOutcome:
     recovered: bool = False
 
 
-# Labels for the four LLMTaskType values in proto/llm.proto.
+# These entries correspond to the four task types the LLM service defines.
 ASSISTANT_TASKS = (
     ("AUCTION_FAQ", "Ask a question", "Rules, bidding, item details"),
     ("ITEM_DESCRIPTION", "Write a description", "Generate a listing description"),
@@ -225,8 +225,9 @@ class AuctionClient:
         try:
             reply = self._authed(IDEMPOTENT("PlaceBid"), build)
         except AuctionError as exc:
-            # We retried and the server says too low -- possibly because our
-            # own earlier attempt is what raised the bar.
+            # The call was retried and the server reports the bid as too low,
+            # which may be because an earlier attempt of ours succeeded and
+            # raised the highest bid.
             if exc.kind is ErrorKind.BID_TOO_LOW and exc.attempts > 1:
                 recovered = self._bid_actually_won(auction_id, amount)
                 if recovered:
@@ -249,8 +250,8 @@ class AuctionClient:
         if auction is None:
             return None
 
-        # Float equality is fine here: this is the same literal we sent,
-        # round-tripped through the proto, not the result of arithmetic.
+        # Comparing these values directly is safe, because this is the same
+        # number that was sent and returned rather than a computed one.
         if auction.highest_bidder == self.session.username \
                 and auction.current_highest_bid == amount:
             log.info("bid on %s landed despite an ambiguous reply", auction_id)
@@ -293,7 +294,8 @@ class AuctionClient:
             if exc.kind is ErrorKind.INVALID_ARGUMENT:
                 return CreateOutcome(False, exc.message)
 
-            # Ambiguous. Go looking rather than resending and risking two.
+            # The outcome is unclear, so the auction is searched for rather
+            # than created again, which would risk producing two of them.
             found = self._find_created(item_name, starting_price, requested_at)
             if found:
                 return CreateOutcome(
@@ -310,9 +312,9 @@ class AuctionClient:
     def _find_created(self, item_name, starting_price, since):
         """Look for an auction our ambiguous create may have made.
 
-        Imperfect -- Auction has no seller field, so two users creating the
-        same item in the same second are indistinguishable. An idempotency key
-        would make this exact.
+        This is approximate. An auction carries no seller field, so two users
+        creating the same item within the same second cannot be told apart. An
+        idempotency key on the request would make the search exact.
         """
         try:
             auctions = self.get_auctions(active_only=False)
@@ -362,8 +364,9 @@ class AuctionClient:
     def ask_assistant(self, task, query, auction_id=None):
         """Ask the LLM through the application server.
 
-        The server owns the LLM hop -- it builds the AuctionContext and calls
-        the LLM node. We just pass the task type and the question.
+        The application server performs the call to the LLM server. It builds
+        the auction context, so only the task type and the question are sent
+        from here.
         """
         if task not in ASSISTANT_TASK_IDS:
             raise ValueError(f"unknown task {task!r}")
@@ -396,16 +399,18 @@ class AuctionClient:
                 )
                 if not reply.success:
                     err = classify_status(reply.message, endpoint=endpoint)
-                    # Only auth failures go back through the retry loop, so a
-                    # dead LLM node doesn't get retried four times.
+                    # Only an authentication failure is raised to the retry
+                    # loop, so that an unavailable LLM server is reported once
+                    # rather than attempted repeatedly.
                     if err.kind is ErrorKind.UNAUTHENTICATED:
                         raise err
                 return reply
             return invoke
 
         try:
-            # at-most-once: a timeout may mean the model is still generating,
-            # and resending just queues another expensive run behind it.
+            # A timeout may mean the model is still generating a reply, so
+            # sending the request again would queue a second costly run behind
+            # the first. The call is therefore made at most once.
             reply = self._authed(AT_MOST_ONCE("AskLLM"), build)
         except AuctionError as exc:
             return AssistantReply("", task, error=exc.user_message())

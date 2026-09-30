@@ -27,8 +27,8 @@ class SessionManager:
         self._token = None
         self._username = None
         self._password = None
-        # Bumped on each login so several callers that all hit an expired
-        # token collapse into one re-login instead of N.
+        # This counter increases on each login. It allows several callers that
+        # meet the same expired token to share one re-login between them.
         self._generation = 0
 
     @property
@@ -65,8 +65,8 @@ class SessionManager:
                 timeout=self._pool._config.rpc_timeout_s,
             )
             if not reply.status.success:
-                # Non-retryable, so the retry loop stops rather than hammering
-                # login with credentials that are simply wrong.
+                # Raising a permanent failure stops the retry loop, which
+                # would otherwise repeat credentials that are simply wrong.
                 raise classify_status(reply.status.message, endpoint=endpoint)
             return reply
 
@@ -99,8 +99,8 @@ class SessionManager:
             reply = call(self._pool, IDEMPOTENT("Logout"), invoke, config=self._pool._config)
             success = reply.success
         except AuctionError as exc:
-            # Still drop the local session -- a logout that can't reach the
-            # server should log you out of this client anyway.
+            # The local session is cleared regardless, because a sign out that
+            # cannot reach the server should still sign the user out here.
             log.warning("logout RPC failed (%s); clearing session locally", exc.kind.value)
             success = False
         finally:

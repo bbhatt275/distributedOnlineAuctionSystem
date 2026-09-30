@@ -32,8 +32,9 @@ def _default_endpoints():
     host = _env_str("APP_HOST", "localhost")
     port = _env_int("APP_PORT", 50051)
 
-    # .env.example has APP_HOST=0.0.0.0, which is a bind address, not something
-    # you can dial. Rewrite it so a copied .env doesn't break the client.
+    # The example environment file sets APP_HOST to 0.0.0.0, which is an
+    # address to listen on rather than one to connect to. It is rewritten here
+    # so that copying that file does not break the client.
     if host in ("0.0.0.0", "::", ""):
         host = "localhost"
 
@@ -68,7 +69,8 @@ class WatchConfig:
 class ClientConfig:
     endpoints: list[str] = field(default_factory=_default_endpoints)
     rpc_timeout_s: float = field(default_factory=lambda: _env_float("AUCTION_RPC_TIMEOUT", 5.0))
-    # Local model generation is far slower than an auction RPC.
+    # Generating a reply takes far longer than an ordinary auction call, so
+    # the assistant is given its own deadline.
     llm_timeout_s: float = field(default_factory=lambda: _env_float("AUCTION_LLM_TIMEOUT", 90.0))
     retry: RetryConfig = field(default_factory=RetryConfig)
     breaker: BreakerConfig = field(default_factory=BreakerConfig)
@@ -76,14 +78,10 @@ class ClientConfig:
     auto_reauth: bool = True
 
     def grpc_channel_options(self):
-        # Keepalive has to stay inside what the server tolerates. grpc servers
-        # accept roughly one ping per 5 min while they aren't sending data, and
-        # AskLLM holds the call open for a minute or more while the model
-        # generates. Pinging every 10s through that earned a GOAWAY with
-        # ENHANCE_YOUR_CALM and killed the connection mid-answer.
-        #
-        # Liveness comes from per-call deadlines instead -- a dead node fails
-        # on connect, a hung one hits rpc_timeout_s.
+        # The server closes a connection that is probed more often than it
+        # tolerates while it is not sending data, which would interrupt a long
+        # assistant call. Probing is therefore kept infrequent, and the
+        # liveness of a server is established by per-call deadlines instead.
         return [
             ("grpc.keepalive_time_ms", 300_000),
             ("grpc.keepalive_timeout_ms", 10_000),

@@ -1,4 +1,4 @@
-"""Concurrent client simulator -- the assignment's "Node 5".
+"""Concurrent client simulator, acting as the client node of the demo setup.
 
     python -m client.simulator race --clients 20
     python -m client.simulator soak --clients 5 --duration 60
@@ -7,8 +7,9 @@ Each worker is a real AuctionClient with its own token, channel and retry
 state, so this exercises the same path the CLI and web UI use.
 
 The race mode is the concurrency-control demo: N clients bid on one auction at
-once, and afterwards we check the server serialised them properly -- no
-duplicate amounts, no lost updates, strictly increasing bids.
+once, and the resulting server state is then checked. No two accepted bids
+may share an amount, no update may be lost, and the accepted bids must form a
+strictly increasing sequence.
 """
 
 from __future__ import annotations
@@ -28,13 +29,13 @@ from client.errors import AuctionError, ErrorKind
 
 log = logging.getLogger("auction.simulator")
 
-# From application/auth_service.py
+# These accounts are the ones the application server creates at startup.
 SEED_USERS = [
-    ("alice", "alice123"),
-    ("bob", "bob123"),
-    ("charlie", "charlie123"),
-    ("david", "david123"),
+    ("ashish", "ashish123"),
     ("bharat", "password123"),
+    ("chetna", "chetna123"),
+    ("devashish", "devashish123"),
+    ("shivesh", "shivesh123"),
 ]
 
 
@@ -210,7 +211,7 @@ def soak(clients, duration, endpoints):
     auction_id = created.auction_id
 
     print(f"auction {auction_id[:8]}; {clients} clients bidding for {duration}s")
-    print("kill the application server at any point -- clients should recover\n")
+    print("Stop the application server at any point. The clients should recover.\n")
 
     report = Report()
     stop = threading.Event()

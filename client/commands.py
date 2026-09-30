@@ -16,7 +16,7 @@ import shlex
 import sys
 import time
 
-from client.auction_client import AuctionClient
+from client.auction_client import ASSISTANT_TASKS, AuctionClient
 from client.errors import AuctionError
 from client.state import ConnectionState, EventType
 from client.watcher import AuctionWatcher
@@ -66,6 +66,7 @@ class AuctionShell:
         self.watcher = watcher
         self.running = True
         self._live = True
+        self._ask_task = ASSISTANT_TASKS[0][0]
 
     def on_event(self, event):
         if not self._live:
@@ -85,7 +86,7 @@ class AuctionShell:
 
         elif event.type is EventType.AUCTION_CLOSED:
             a = p["auction"]
-            print(f"\n  {YELLOW('[closed]')} {a.item_name} -> {a.winner or 'no winner'} "
+            print(f"\n  {YELLOW('[closed]')} {a.item_name} won by {a.winner or 'nobody'} "
                   f"at {money(a.current_highest_bid)}")
 
         elif event.type is EventType.AUCTION_ADDED:
@@ -105,7 +106,8 @@ class AuctionShell:
   create                create an auction (prompts)
   bid <id> <amount>     place a bid
   close <id>            close an auction
-  ask <question>        ask the AI assistant
+  ask [<id>] <question> ask the assistant about an auction
+  task [<name>]         show or choose the assistant task
   whoami                session and cluster health
   live [on|off]         toggle live updates
   help                  this text
@@ -235,13 +237,66 @@ class AuctionShell:
         print(GREEN(f"  closed; winner: {(auction.winner if auction else None) or '--'}"))
 
     def cmd_ask(self, *args):
-        # auction.proto has no route to the LLM node, so there's nothing to
-        # call yet. Left as a visible stub for when that's wired up.
         if not args:
-            print(RED("  usage: ask <question>"))
+            print(RED("  usage: ask [<id>] <question>"))
+            print(DIM("  tasks: " + ", ".join(t for t, _, _ in ASSISTANT_TASKS)))
             return
-        print(YELLOW("  [assistant] not wired up yet."))
-        print(DIM("  auction.proto has no LLM route -- the app server needs a passthrough RPC."))
+
+        # The first word is treated as an auction id when it matches one that
+        # is already known, so that the assistant can be asked about a
+        # specific item without naming a task.
+        auction_id = None
+        words = list(args)
+        if len(words) > 1:
+            candidate = self._resolve_quiet(words[0])
+            if candidate:
+                auction_id = candidate
+                words = words[1:]
+
+        task = self._ask_task
+        query = " ".join(words)
+
+        try:
+            reply = self.client.ask_assistant(task, query, auction_id)
+        except ValueError as exc:
+            print(RED(f"  {exc}"))
+            return
+
+        if reply.error:
+            print(RED(f"  {reply.error}"))
+            return
+
+        if not reply.connected:
+            print(YELLOW("  assistant is not available on this server"))
+
+        print()
+        for line in (reply.answer or "").splitlines():
+            print(f"  {line}")
+        print()
+
+    def cmd_task(self, *args):
+        """Choose which assistant task subsequent questions use."""
+        names = [t for t, _, _ in ASSISTANT_TASKS]
+
+        if not args:
+            for name, label, hint in ASSISTANT_TASKS:
+                mark = GREEN(" *") if name == self._ask_task else "  "
+                print(f"  {mark} {name:<18}{label} ({hint})")
+            return
+
+        choice = args[0].upper()
+        if choice not in names:
+            print(RED(f"  unknown task {args[0]!r}"))
+            return
+
+        self._ask_task = choice
+        print(GREEN(f"  assistant task set to {choice}"))
+
+    def _resolve_quiet(self, prefix):
+        """Resolve an auction id prefix, returning None instead of reporting."""
+        matches = [a.auction_id for a in self.client.store.auctions()
+                   if a.auction_id.startswith(prefix)]
+        return matches[0] if len(matches) == 1 else None
 
     def cmd_whoami(self, *_):
         session = self.client.session
@@ -274,6 +329,7 @@ class AuctionShell:
         "bid": "cmd_bid",
         "close": "cmd_close",
         "ask": "cmd_ask",
+        "task": "cmd_task",
         "whoami": "cmd_whoami",
         "live": "cmd_live",
         "quit": "cmd_quit", "exit": "cmd_quit",
