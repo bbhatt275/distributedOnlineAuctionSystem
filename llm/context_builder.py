@@ -5,8 +5,9 @@ from llm.prompts.summary import SUMMARY_SYSTEM_PROMPT
 
 def build_auction_context(auction):
     """
-    Convert the structured AuctionContext protobuf message
-    into human-readable context for the LLM.
+    Converts a structured AuctionContext Protobuf message into
+    a single formatted string which is human-readable since that
+    is how it is supposed to be as an input to LLM.
 
     The LLM receives only the information supplied by the
     Application Server.
@@ -17,6 +18,7 @@ def build_auction_context(auction):
 
     parts = []
 
+    # basic idea: check if field is available, then append it.
     if auction.auction_id:
         parts.append(f"Auction ID: {auction.auction_id}")
 
@@ -108,14 +110,14 @@ def build_auction_context(auction):
 
 def build_requester_context(requester):
     """
-    Convert optional requester information into text.
+    Converts the optional requester information into text.
     """
 
     if requester is None:
         return ""
 
     parts = []
-
+    #check for fields, if available then append.
     if requester.user_id:
         parts.append(
             f"Requester user ID: {requester.user_id}"
@@ -174,7 +176,7 @@ def build_messages(request):
 
     messages = []
 
-    # Previous conversation.
+    # For previous conversation.
     for message in request.conversation_history:
 
         if message.role == llm_pb2.USER:

@@ -11,6 +11,9 @@ Each browser session gets its own AuctionClient, so two tabs logged in as
 different users behave like two separate client nodes.
 """
 
+
+
+
 from __future__ import annotations
 
 import asyncio
