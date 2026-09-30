@@ -1,0 +1,114 @@
+{% extends "base.html" %}
+{% block title %}{{ auction.item_name }}{% endblock %}
+
+{% block content %}
+<p><a class="back" href="/">&larr; all auctions</a></p>
+
+<div class="grid">
+  <section class="card">
+    <h1>{{ auction.item_name }}</h1>
+    <p class="muted">{{ auction.description }}</p>
+
+    <div class="stats">
+      <div><span class="label">Current</span><strong id="current">{{ '%.2f'|format(auction.current_highest_bid) }}</strong></div>
+      <div><span class="label">Leader</span><strong id="leader">{{ auction.highest_bidder or '—' }}</strong></div>
+      <div><span class="label">Starting</span><strong>{{ '%.2f'|format(auction.starting_price) }}</strong></div>
+      <div>
+        <span class="label">Status</span>
+        <strong id="status" data-ends="{{ auction.end_time }}" data-closed="{{ 'true' if not auction.active else 'false' }}">
+          {{ 'closed' if not auction.active else '—' }}
+        </strong>
+      </div>
+    </div>
+
+    {% if auction.active %}
+    <form class="inline" id="bid-form">
+      <input name="amount" type="number" step="0.01" placeholder="your bid" required>
+      <button type="submit">Place bid</button>
+    </form>
+    <form method="post" action="/auction/{{ auction.auction_id }}/close" class="inline">
+      <button class="secondary">Close now</button>
+    </form>
+    {% else %}
+    <p class="won">Winner: <strong>{{ auction.winner or '—' }}</strong></p>
+    {% endif %}
+    <p id="flash" class="flash" hidden></p>
+  </section>
+
+  <aside class="card">
+    <h2>Bid history</h2>
+    <table id="bids">
+      <thead><tr><th>Bidder</th><th class="num">Amount</th><th>Time</th></tr></thead>
+      <tbody>
+        {% for b in bids %}
+        <tr data-bid="{{ b.bid_id }}">
+          <td>{{ b.bidder }}</td>
+          <td class="num">{{ '%.2f'|format(b.amount) }}</td>
+          <td class="muted mono">{{ b.timestamp }}</td>
+        </tr>
+        {% else %}
+        <tr><td colspan="3" class="muted">No bids yet.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    <p class="hint">
+      Ordered by amount, not timestamp — <code>Bid.timestamp</code> is whole
+      seconds, too coarse to order concurrent bids.
+    </p>
+  </aside>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  const AUCTION_ID = "{{ auction.auction_id }}";
+
+  const flash = (text, ok) => {
+    const el = document.getElementById('flash');
+    el.textContent = text; el.hidden = false;
+    el.className = 'flash ' + (ok ? 'ok' : 'bad');
+    setTimeout(() => { el.hidden = true; }, 4000);
+  };
+
+  const form = document.getElementById('bid-form');
+  if (form) form.addEventListener('submit', async (ev) => {
+    ev.preventDefault();
+    const res = await fetch(`/auction/${AUCTION_ID}/bid`, { method: 'POST', body: new FormData(form) });
+    const data = await res.json();
+    flash(data.message + (data.recovered ? ' (recovered after ambiguous reply)' : ''), data.accepted);
+    if (data.accepted) form.reset();
+  });
+
+  window.onAuctionEvent = (data) => {
+    if (data.auction && data.auction.auction_id === AUCTION_ID) {
+      document.getElementById('current').textContent = data.auction.current_highest_bid.toFixed(2);
+      document.getElementById('leader').textContent = data.auction.highest_bidder || '—';
+      if (!data.auction.active) {
+        const status = document.getElementById('status');
+        status.dataset.closed = 'true';
+        status.textContent = 'closed';
+      }
+      if (data.type === 'outbid') flash(`Outbid by ${data.by}`, false);
+    }
+
+    if (data.bid && data.bid.auction_id === AUCTION_ID) {
+      const tbody = document.querySelector('#bids tbody');
+      if (document.querySelector(`tr[data-bid="${data.bid.bid_id}"]`)) return;
+      const empty = tbody.querySelector('td[colspan]');
+      if (empty) empty.parentElement.remove();
+
+      const row = document.createElement('tr');
+      row.dataset.bid = data.bid.bid_id;
+      row.innerHTML = `<td>${data.bid.bidder}</td>`
+        + `<td class="num">${data.bid.amount.toFixed(2)}</td>`
+        + `<td class="muted mono">${data.bid.timestamp}</td>`;
+      row.classList.add('flashed');
+
+      // keep sorted by amount desc
+      const rows = [...tbody.querySelectorAll('tr')];
+      const after = rows.find(r => parseFloat(r.querySelector('.num').textContent) < data.bid.amount);
+      after ? tbody.insertBefore(row, after) : tbody.appendChild(row);
+    }
+  };
+</script>
+{% endblock %}

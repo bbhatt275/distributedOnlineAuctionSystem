@@ -85,3 +85,24 @@ class AuctionClient:
             token = token
         )
         return self.stub.Logout(request)
+
+    def close_auction(self,token,auction_id):
+        request = auction_pb2.PostRequest(
+            token=token,
+            close_auction = auction_pb2.CloseAuctionRequest(
+                auction_id=auction_id
+            )
+        )
+        return self.stub.Post(request)
+
+    def ask_llm(self, token, query, task_type, auction_id=""):
+        request = auction_pb2.AskLLMRequest(
+            token=token,
+            query=query,
+            task_type=task_type,
+            auction_id=auction_id
+        )
+
+        response = self.stub.AskLLM(request)
+
+        return response

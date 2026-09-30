@@ -1,6 +1,6 @@
 import time
 import uuid
-
+import threading
 from generated import auction_pb2
 
 
@@ -8,6 +8,18 @@ class AuctionManager:
 
     def __init__(self, state_store):
         self.state_store = state_store
+        threading.Thread(target=self.track_auction, daemon=True).start()
+
+    def track_auction(self):
+        while True:
+            with self.state_store.lock:
+                auctions = self.get_auctions(active_only=True)
+                if auctions is not None:
+                    for auction in auctions:
+                        if time.time() >= auction.end_time:
+                            self.close_auction(auction.auction_id)
+            time.sleep(1)
+
 
     def create_auction(
         self,
@@ -32,7 +44,8 @@ class AuctionManager:
             start_time=start_time,
             end_time=end_time,
             active=True,
-            winner=""
+            winner="",
+            creator=creator
         )
 
         with self.state_store.lock:
@@ -102,3 +115,13 @@ class AuctionManager:
     def get_bids(self, auction_id):
         with self.state_store.lock:
             return self.state_store.bids.get(auction_id)
+
+    def close_auction(self, auction_id):
+        with self.state_store.lock:
+            auction = self.state_store.auctions.get(auction_id)
+            if auction is None:
+                return False, "Auction not found"
+            auction.active = False
+            auction.winner = auction.highest_bidder
+            return True, "Auction closed successfully"
+

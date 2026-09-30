@@ -1,3 +1,4 @@
+import llm
 from client.grpc_client import AuctionClient
 
 
@@ -100,6 +101,9 @@ def main():
     # 6. PLACE HIGHER BID
     # ============================================================
 
+    print("\n=== CLOSE AUCTION ===")
+    res = client.close_auction(token, auction_id)
+
     bid_response = client.place_bid(
         token=token,
         auction_id=auction_id,
@@ -147,6 +151,52 @@ def main():
             "| Amount:", bid.amount,
             "| Time:", bid.timestamp
         )
+
+    print("\n=== WATCHER TEST ===")
+
+    res = client.create_auction(
+        token,
+        "Watcher Test Item",
+        "Testing automatic auction expiry",
+        100.0,
+        5  # 5 seconds
+    )
+
+    auction_id = res.auction_id
+
+    print("Auction created:", auction_id)
+
+    res = client.place_bid(token, auction_id, 150.0)
+
+    print("Bid:", res.success, res.message)
+
+    #llm test
+    from generated import llm_pb2
+
+    response = client.ask_llm(
+        token,
+        "What is the current highest bid?",
+        llm_pb2.AUCTION_FAQ,
+        auction_id
+    )
+
+    print(response.answer)
+
+    import time
+
+    print("Waiting for auction to expire...")
+    time.sleep(7)
+
+    res = client.get_auction(token, auction_id)
+
+    auction = res.auctions[0]
+
+    print("\n=== AFTER EXPIRY ===")
+    print("Active:", auction.active)
+    print("Winner:", auction.winner)
+    print("Highest bid:", auction.current_highest_bid)
+
+
 
     # ============================================================
     # 9. LOGOUT

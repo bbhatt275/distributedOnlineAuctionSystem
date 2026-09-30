@@ -4,6 +4,7 @@ import grpc
 
 from generated import llm_pb2_grpc
 from llm.grpc_service import LLMService
+from llm.model import MODEL_NAME
 
 
 def serve():
@@ -23,7 +24,7 @@ def serve():
     print("======================================")
     print("        LLM gRPC SERVER")
     print("======================================")
-    print("Model : llama3.2:3b")
+    print(f"Model : {MODEL_NAME}")
     print("Address: 0.0.0.0:50052")
     print("Status : RUNNING")
     print("======================================")

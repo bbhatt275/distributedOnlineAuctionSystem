@@ -26,9 +26,7 @@ if _version_not_supported:
 
 
 class LLMServiceStub:
-    """============================================================
-    LLM Service
-    ============================================================
+    """LLMService is the grpc service interface that  the application server calls to interact with the LLM.
 
     """
 
@@ -46,20 +44,17 @@ class LLMServiceStub:
 
 
 class LLMServiceServicer:
-    """============================================================
-    LLM Service
-    ============================================================
+    """LLMService is the grpc service interface that  the application server calls to interact with the LLM.
 
     """
 
     def GetLLMAnswer(self, request, context):
-        """Main LLM endpoint.
+        """It serves as the main LLm endpoint and supports the capabalities:
+        1. Auction FAQ
+        2. Item description generation
+        3. Ongoing Auction summarization
+        4. Completed auction summarization
 
-        Supported M1 capabilities:
-        1. Auction FAQ / chatbot
-        2. Item-description generation
-        3. Auction summarization
-        4. Completed-auction / result summarization
         """
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details('Method not implemented!')
@@ -82,9 +77,7 @@ def add_LLMServiceServicer_to_server(servicer, server):
 
  # This class is part of an EXPERIMENTAL API.
 class LLMService:
-    """============================================================
-    LLM Service
-    ============================================================
+    """LLMService is the grpc service interface that  the application server calls to interact with the LLM.
 
     """
 
