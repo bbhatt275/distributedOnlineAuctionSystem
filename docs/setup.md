@@ -40,8 +40,8 @@ Four terminals. Ollama is already running from above.
 .venv/bin/python -m client.commands --user alice --password alice123
 ```
 
-Seed users are created in `application/auth_service.py`: `bharat`,
-`alice`, `bob`, `charlie`, `david` (passwords are `<name>123`, except
+Seed users are created in `application/auth_service.py`:
+`ashish`, `bharat`, `chetna`, `devashish`,`shivesh` (passwords are `<name>123`, except
 `bharat` / `password123`).
 
 ## Check it works

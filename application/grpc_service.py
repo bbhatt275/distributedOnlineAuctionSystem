@@ -6,6 +6,7 @@ from generated import auction_pb2_grpc
 from application.auth_service import AuthService
 from application.auction_manager import AuctionManager
 from application.state_store import StateStore
+from application.escrow import MockEscrow
 
 class AuctionService(auction_pb2_grpc.AuctionServiceServicer):
     def __init__(self):
@@ -13,6 +14,7 @@ class AuctionService(auction_pb2_grpc.AuctionServiceServicer):
         self.state_store = StateStore()
         self.auction_manager = AuctionManager(self.state_store)
         self.llm_client = LLMClient()
+        self.escrow = MockEscrow()
 
     def AskLLM(self, request, context):
 
@@ -82,6 +84,9 @@ class AuctionService(auction_pb2_grpc.AuctionServiceServicer):
                 highest_bidder=auction.highest_bidder,
                 winner=auction.winner
             )
+            additional_context = (
+                f"Auction creator: {auction.creator}\n"
+            )
 
             # Add bid history
             if bids:
@@ -119,6 +124,7 @@ class AuctionService(auction_pb2_grpc.AuctionServiceServicer):
     Starting Price: ₹{auction.starting_price}
     Current Highest Bid: ₹{auction.current_highest_bid}
     Highest Bidder: {auction.highest_bidder}
+    Creator: {auction.creator}
     Active: {auction.active}
     Start Time: {auction.start_time}
     End Time: {auction.end_time}
@@ -219,7 +225,7 @@ class AuctionService(auction_pb2_grpc.AuctionServiceServicer):
         if user is None:
             return auction_pb2.StatusResponse(
                 success=False,
-                mesage = "Not authenticated"
+                message = "Not authenticated"
             )
         if request.HasField("create_auction"):
             auction_request = request.create_auction
@@ -251,19 +257,56 @@ class AuctionService(auction_pb2_grpc.AuctionServiceServicer):
             )
         if request.HasField("place_bid"):
             bid_request = request.place_bid
-
+            # Get the current auction before placing the new bid
+            auction = self.auction_manager.get_auction(
+                bid_request.auction_id
+            )
+            if auction is None:
+                return auction_pb2.StatusResponse(
+                    success=False,
+                    message="Auction not found"
+                )
+            previous_highest_bidder = auction.highest_bidder
+            # Place the bid
             success, message, bid = self.auction_manager.place_bid(
                 auction_id=bid_request.auction_id,
                 bidder=user,
                 amount=bid_request.amount
             )
+            if not success:
+                return auction_pb2.StatusResponse(
+                    success=False,
+                    message=message
+                )
+
+            # Reserve mock funds for the new highest bidder
+            escrow_success, transaction_id = self.escrow.reserve_funds(
+                bidder=user,
+                auction_id=bid_request.auction_id,
+                amount=bid_request.amount
+            )
+
+            if not escrow_success:
+                return auction_pb2.StatusResponse(
+                    success=False,
+                    message="Unable to reserve funds"
+                )
+            # Refund the previous highest bidder
+            if previous_highest_bidder:
+                self.escrow.refund_funds(
+                    auction_id=bid_request.auction_id,
+                    bidder=previous_highest_bidder
+                )
             response = auction_pb2.StatusResponse(
                 success=success,
                 message=message
             )
             if bid is not None:
                 response.auction_id = bid.auction_id
-            return response
+                return response
+            return auction_pb2.StatusResponse(
+                success=False,
+                message="No valid operation specified")
 
         if request.HasField("close_auction"):
             auction_id = request.close_auction.auction_id
@@ -281,6 +324,19 @@ class AuctionService(auction_pb2_grpc.AuctionServiceServicer):
                     message="You can only close auctions that you created"
                 )
             success, msg = self.auction_manager.close_auction(auction_id)
+            if not success:
+                return auction_pb2.StatusResponse(
+                    success=False,
+                    message=msg,
+                    auction_id=auction_id
+                )
+
+            # Release winner's mock funds
+            if auction.winner:
+                self.escrow.release_funds(
+                    auction_id=auction_id,
+                    winner=auction.winner
+                )
             return auction_pb2.StatusResponse(
                 success=success,
                 message=msg,
