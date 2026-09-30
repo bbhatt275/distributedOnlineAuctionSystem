@@ -20,7 +20,7 @@ class ErrorKind(str, Enum):
     TIMEOUT = "timeout"
     PARTITIONED = "partitioned"
 
-    # Milestone 2. Classified now so the UI doesn't need changing later.
+    # Raft-specific; the server does not emit these yet.
     NOT_LEADER = "not_leader"
     NO_QUORUM = "no_quorum"
     CONSENSUS_TIMEOUT = "consensus_timeout"
@@ -118,18 +118,8 @@ def classify_rpc_error(exc, endpoint=None):
 
     kind = _GRPC_KIND.get(code, ErrorKind.UNKNOWN)
 
+    # A servicer that raised is deterministic, so retrying it is pointless.
     if code == grpc.StatusCode.UNKNOWN and "Exception calling application" in detail:
-        # grpc_service.py Post() builds StatusResponse(mesage=...) on the
-        # unauthenticated path (typo for "message"), so an expired token comes
-        # back as a servicer crash instead of success=False. Remove this once
-        # that's fixed -- see docs/server-issues.md.
-        if 'has no "mesage"' in detail:
-            return AuctionError(
-                ErrorKind.UNAUTHENTICATED,
-                "Session rejected by server",
-                endpoint=endpoint,
-                cause=exc,
-            )
         kind = ErrorKind.SERVER_BUG
 
     return AuctionError(kind, detail, endpoint=endpoint, cause=exc)
@@ -147,7 +137,7 @@ _MESSAGE_PATTERNS = (
     (re.compile(r"cannot be negative", re.I), ErrorKind.INVALID_ARGUMENT),
     (re.compile(r"must be positive", re.I), ErrorKind.INVALID_ARGUMENT),
     (re.compile(r"no valid (operation|query) specified", re.I), ErrorKind.INVALID_ARGUMENT),
-    # Milestone 2 shapes, matched before the server emits them.
+    # Raft-specific.
     (re.compile(r"not (the )?leader", re.I), ErrorKind.NOT_LEADER),
     (re.compile(r"no quorum|lost quorum", re.I), ErrorKind.NO_QUORUM),
     (re.compile(r"consensus timeout|commit timeout", re.I), ErrorKind.CONSENSUS_TIMEOUT),

@@ -30,11 +30,11 @@ log = logging.getLogger("auction.simulator")
 
 # From application/auth_service.py
 SEED_USERS = [
-    ("alice", "alice123"),
-    ("bob", "bob123"),
-    ("charlie", "charlie123"),
-    ("david", "david123"),
+    ("ashish", "ashish123"),
     ("bharat", "password123"),
+    ("chetna", "chetna123"),
+    ("devashish", "devashish123"),
+    ("shivesh", "shivesh123"),
 ]
 
 

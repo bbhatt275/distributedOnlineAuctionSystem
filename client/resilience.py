@@ -141,8 +141,8 @@ class _Node:
 class NodePool:
     """Holds a channel per application server and decides which one to use.
 
-    Milestone 1 runs one server so this is mostly a single channel plus a
-    breaker, but the failover path is here already for Milestone 2.
+    With a single endpoint this is one channel plus a breaker; the ordering
+    and failover logic only comes into play once there are several.
     """
 
     def __init__(self, config=None, stub_factory=None):

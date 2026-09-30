@@ -76,14 +76,9 @@ class ClientConfig:
     auto_reauth: bool = True
 
     def grpc_channel_options(self):
-        # Keepalive has to stay inside what the server tolerates. grpc servers
-        # accept roughly one ping per 5 min while they aren't sending data, and
-        # AskLLM holds the call open for a minute or more while the model
-        # generates. Pinging every 10s through that earned a GOAWAY with
-        # ENHANCE_YOUR_CALM and killed the connection mid-answer.
-        #
-        # Liveness comes from per-call deadlines instead -- a dead node fails
-        # on connect, a hung one hits rpc_timeout_s.
+        # Ping slower than the server's tolerance (~1 per 5 min while it isn't
+        # sending data), otherwise a long AskLLM call gets GOAWAY'd mid-answer.
+        # Liveness comes from per-call deadlines instead.
         return [
             ("grpc.keepalive_time_ms", 300_000),
             ("grpc.keepalive_timeout_ms", 10_000),

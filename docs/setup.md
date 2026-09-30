@@ -16,11 +16,10 @@ Ollama, for the LLM node:
 ```bash
 brew install ollama          # macOS; see ollama.com for Linux/Windows
 ollama serve                 # leave running, listens on :11434
-ollama pull qwen3.5:9b       # ~6.6 GB
+ollama pull llama3.2:3b      # or whatever LLM_MODEL names
 ```
 
-The model needs roughly 8 GB of RAM or VRAM. Verified on an Apple M5 with
-32 GB (25 GiB available to the GPU), generating at ~22 tokens/sec.
+The model must match `LLM_MODEL` in `llm/model.py`.
 
 ## Start the nodes
 
@@ -37,7 +36,7 @@ Four terminals. Ollama is already running from above.
 .venv/bin/uvicorn web.app:app --port 8000
 
 # 3b — or the CLI instead
-.venv/bin/python -m client.commands --user alice --password alice123
+.venv/bin/python -m client.commands --user ashish --password ashish123
 ```
 
 Seed users are created in `application/auth_service.py`:
@@ -71,25 +70,7 @@ All optional — defaults work for a single-machine demo.
 | `AUCTION_BREAKER_THRESHOLD` | `3` | Consecutive failures before an endpoint is taken out of rotation. |
 | `AUCTION_BREAKER_RESET` | `5.0` | Seconds before an open breaker retries. |
 | `AUCTION_POLL_FAST` / `AUCTION_POLL_IDLE` | `0.5` / `3.0` | Watcher poll interval, seconds. |
-| `LLM_MODEL` | `qwen3.5:9b` | Ollama model the LLM node loads. |
-| `LLM_THINKING` | `0` | Set to `1` to re-enable reasoning traces. See below. |
-
-## Why thinking is off by default
-
-qwen3.5 is a reasoning model. Left alone it emits about 4000 thinking tokens
-before answering, which at ~22 tokens/sec is over three minutes per reply.
-Measured on the same prompt:
-
-| | Time | Thinking tokens |
-|---|---|---|
-| `LLM_THINKING=1` | 60.4 s | ~4000 |
-| default (off) | 3.1 s | 0 |
-
-The answers were equally good, so it is off by default. Ollama returns
-`content` and `thinking` as separate fields, so thinking traces never leaked
-into answers either way — this is purely about latency.
-
-End-to-end through the full chain, replies land in **5–14 seconds**.
+| `LLM_MODEL` | `llama3.2:3b` | Ollama model the LLM node loads. |
 
 ## Testing without Ollama
 

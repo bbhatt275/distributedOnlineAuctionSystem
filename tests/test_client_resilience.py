@@ -67,18 +67,6 @@ def test_servicer_exception_is_not_retried():
     assert err.retryable is False
 
 
-def test_known_server_typo_is_reported_as_auth_failure():
-    # grpc_service.py Post() has a 'mesage' typo, so a stale token arrives
-    # as a servicer crash. See docs/server-issues.md.
-    err = classify_rpc_error(
-        FakeRpcError(
-            grpc.StatusCode.UNKNOWN,
-            'Exception calling application: Protocol message StatusResponse has no "mesage" field.',
-        )
-    )
-    assert err.kind is ErrorKind.UNAUTHENTICATED
-
-
 @pytest.mark.parametrize(
     "message,expected",
     [

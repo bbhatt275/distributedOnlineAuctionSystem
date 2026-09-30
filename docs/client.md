@@ -99,8 +99,6 @@ Two behaviours differ from normal auction RPCs:
 * **It gets its own deadline**, `llm_timeout_s` (90s), because generation takes
   seconds to tens of seconds where an auction RPC takes milliseconds.
 
-Measured end to end with `qwen3.5:9b`: 5–14 seconds per reply.
-
 ## Failure handling
 
 Classified in `errors.py`, acted on in `resilience.py`:

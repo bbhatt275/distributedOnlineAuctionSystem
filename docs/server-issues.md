@@ -6,44 +6,14 @@ them, so they are documented with reproductions.
 
 ---
 
-## 1. `Post` crashes instead of rejecting an invalid token — **one-character fix**
+## 1. `Post` crashed on an invalid token -- fixed
 
-`application/grpc_service.py`, `Post()`:
-
-```python
-if user is None:
-    return auction_pb2.StatusResponse(
-        success=False,
-        mesage = "Not authenticated"      # <-- "mesage", should be "message"
-    )
-```
-
-`StatusResponse` has no field `mesage`, so protobuf raises `ValueError` inside
-the servicer. Instead of a clean `success=False`, the caller gets an `UNKNOWN`
-gRPC error.
-
-**Reproduction**
-
-```
-$ python -c "
-from client.grpc_client import AuctionClient
-c = AuctionClient()
-print(c.get_auctions('bad-token').status.message)   # Get: clean
-print(c.place_bid('bad-token', 'x', 1.0))           # Post: raises
-"
-Not Authenticated
-grpc._channel._InactiveRpcError: StatusCode.UNKNOWN
-  details = 'Exception calling application: Protocol message StatusResponse has no "mesage" field.'
-```
-
-`Get()` handles this correctly; only `Post()` is affected.
-
-**Impact** Every write with an expired token surfaces as a server crash rather
-than an auth failure. The client special-cases this string in
-`client/errors.py::classify_rpc_error` so re-authentication still works — that
-workaround should be deleted once this is fixed.
-
----
+`grpc_service.py` `Post()` built `StatusResponse(mesage=...)` on the
+unauthenticated branch, so protobuf raised inside the servicer and every write
+with an expired token surfaced as an `UNKNOWN` gRPC error rather than
+`success=False`. Fixed on develop; a bad token now returns
+`success=False, "Not authenticated"`. The client-side workaround has been
+removed.
 
 ## 2. No authorization checks on auction operations
 
@@ -91,8 +61,7 @@ status code instead of `str(e)` would let that helper go away.
 
 ## 4. Minor
 
-* **`escrow.py` and `auction_service.py` are empty files.** Milestone 1 lists
-  mock escrow as a deliverable; the client has no escrow surface to call.
+* **`auction_service.py` is an empty file.** (`escrow.py` is now implemented.)
 * **`GetBids` on an unknown auction returns `None`**, not an empty list.
   `state_store.bids.get(auction_id)` returns `None`, which protobuf accepts as
   "unset" — so the reply is `success=True` with no bids, indistinguishable from
