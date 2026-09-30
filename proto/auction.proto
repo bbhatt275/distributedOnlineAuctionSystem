@@ -2,6 +2,8 @@ syntax = "proto3";
 
 package auction;
 
+import "llm.proto";
+
 // ============================================================
 // Auction Service
 // ============================================================
@@ -15,6 +17,23 @@ service AuctionService {
     // Client generic requests
     rpc Post(PostRequest) returns (StatusResponse);
     rpc Get(GetRequest) returns (GetResponse);
+
+    //llm
+    rpc AskLLM(AskLLMRequest) returns (AskLLMResponse);
+}
+
+//llm
+message AskLLMRequest {
+    string token = 1;
+    string query = 2;
+    llm.LLMTaskType task_type = 3;
+    string auction_id = 4;
+}
+
+message AskLLMResponse {
+    bool success = 1;
+    string message = 2;
+    string answer = 3;
 }
 
 // ============================================================
@@ -140,6 +159,7 @@ message Auction {
 
     bool active = 9;
     string winner = 10;
+    string creator = 11;
 }
 
 

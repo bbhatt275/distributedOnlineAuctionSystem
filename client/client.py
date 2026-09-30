@@ -1,3 +1,4 @@
+import llm
 from client.grpc_client import AuctionClient
 
 
@@ -169,6 +170,18 @@ def main():
 
     print("Bid:", res.success, res.message)
 
+    #llm test
+    from generated import llm_pb2
+
+    response = client.ask_llm(
+        token,
+        "What is the current highest bid?",
+        llm_pb2.AUCTION_FAQ,
+        auction_id
+    )
+
+    print(response.answer)
+
     import time
 
     print("Waiting for auction to expire...")
@@ -182,6 +195,8 @@ def main():
     print("Active:", auction.active)
     print("Winner:", auction.winner)
     print("Highest bid:", auction.current_highest_bid)
+
+
 
     # ============================================================
     # 9. LOGOUT

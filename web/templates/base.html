@@ -1,0 +1,209 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}Auction{% endblock %}</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <header class="bar">
+    <a class="brand" href="/">Distributed Auction</a>
+    {% if username %}
+      <div class="bar-right">
+        <span id="conn" class="pill {{ connection }}">{{ connection }}</span>
+        <span class="user">{{ username }}</span>
+        <form method="post" action="/logout"><button class="link">logout</button></form>
+      </div>
+    {% endif %}
+  </header>
+
+  <main>
+    {% block content %}{% endblock %}
+  </main>
+
+  {% if username %}
+  <div id="assistant">
+    <button id="assistant-toggle" type="button" aria-expanded="false">Ask AI</button>
+
+    <section id="assistant-panel" hidden aria-label="Auction assistant">
+      <header>
+        <strong>Auction assistant</strong>
+        <span id="assistant-status" class="pill"></span>
+        <button id="assistant-close" type="button" aria-label="Close">&times;</button>
+      </header>
+
+      <div id="assistant-tasks" role="group" aria-label="Task type"></div>
+
+      <div id="assistant-thread">
+        <p class="assistant-empty">Pick a task, type your question, and send.</p>
+      </div>
+
+      <form id="assistant-form">
+        <textarea id="assistant-query" rows="2" placeholder="Type your question..." required></textarea>
+        <button type="submit" id="assistant-send">Send</button>
+      </form>
+    </section>
+  </div>
+  {% endif %}
+
+
+  <script>
+    // Live updates. Pages hook in via window.onAuctionEvent; the connection
+    // pill is handled here for every page.
+    (function () {
+      if (!document.getElementById('conn')) return;
+      const source = new EventSource('/events');
+      source.onmessage = (msg) => {
+        const data = JSON.parse(msg.data);
+        if (data.type === 'connection_changed' || data.connection) {
+          const pill = document.getElementById('conn');
+          const state = data.state || data.connection;
+          if (pill && state) { pill.textContent = state; pill.className = 'pill ' + state; }
+        }
+        if (window.onAuctionEvent) window.onAuctionEvent(data);
+      };
+      source.onerror = () => {
+        const pill = document.getElementById('conn');
+        if (pill) { pill.textContent = 'disconnected'; pill.className = 'pill disconnected'; }
+      };
+    })();
+
+    // Countdowns, driven off data-ends (unix seconds).
+    setInterval(() => {
+      document.querySelectorAll('[data-ends]').forEach(el => {
+        const left = Math.max(0, Math.floor(el.dataset.ends - Date.now() / 1000));
+        if (el.dataset.closed === 'true') { el.textContent = 'closed'; return; }
+        el.textContent = left <= 0 ? 'ended'
+          : left < 60 ? left + 's'
+          : Math.floor(left / 60) + 'm' + String(left % 60).padStart(2, '0') + 's';
+        el.classList.toggle('urgent', left > 0 && left <= 30);
+      });
+    }, 1000);
+  </script>
+  <script>
+
+    // Assistant widget. The four task types mirror LLMTaskType in llm.proto;
+    // they're fetched rather than hard-coded so the list stays in one place.
+    (function () {
+      const toggle = document.getElementById('assistant-toggle');
+      if (!toggle) return;
+
+      const panel = document.getElementById('assistant-panel');
+      const closeBtn = document.getElementById('assistant-close');
+      const taskBar = document.getElementById('assistant-tasks');
+      const thread = document.getElementById('assistant-thread');
+      const form = document.getElementById('assistant-form');
+      const input = document.getElementById('assistant-query');
+      const send = document.getElementById('assistant-send');
+      const status = document.getElementById('assistant-status');
+
+      let tasks = [];
+      let selected = null;
+      let loaded = false;
+
+      const say = (who, text, cls) => {
+        const empty = thread.querySelector('.assistant-empty');
+        if (empty) empty.remove();
+
+        const row = document.createElement('div');
+        row.className = 'assistant-msg ' + who + (cls ? ' ' + cls : '');
+        row.textContent = text;
+        thread.appendChild(row);
+        thread.scrollTop = thread.scrollHeight;
+        return row;
+      };
+
+      const renderTasks = () => {
+        taskBar.innerHTML = '';
+        tasks.forEach(t => {
+          const chip = document.createElement('button');
+          chip.type = 'button';
+          chip.className = 'assistant-chip' + (t.id === selected ? ' on' : '');
+          chip.textContent = t.label;
+          chip.title = t.hint;
+          chip.onclick = () => {
+            selected = t.id;
+            input.placeholder = t.hint;
+            renderTasks();
+            input.focus();
+          };
+          taskBar.appendChild(chip);
+        });
+      };
+
+      const load = async () => {
+        if (loaded) return;
+        const res = await fetch('/api/assistant/tasks');
+        if (!res.ok) return;
+
+        const data = await res.json();
+        tasks = data.tasks;
+        selected = tasks.length ? tasks[0].id : null;
+        if (selected) input.placeholder = tasks[0].hint;
+        renderTasks();
+
+        status.textContent = data.connected ? 'live' : 'not connected';
+        status.className = 'pill ' + (data.connected ? 'connected' : 'partitioned');
+        loaded = true;
+      };
+
+      toggle.onclick = async () => {
+        const opening = panel.hidden;
+        panel.hidden = !opening;
+        toggle.setAttribute('aria-expanded', String(opening));
+        if (opening) { await load(); input.focus(); }
+      };
+
+      closeBtn.onclick = () => {
+        panel.hidden = true;
+        toggle.setAttribute('aria-expanded', 'false');
+      };
+
+      form.addEventListener('submit', async (ev) => {
+        ev.preventDefault();
+        const query = input.value.trim();
+        if (!query || !selected) return;
+
+        say('user', query);
+        input.value = '';
+        send.disabled = true;
+        const pending = say('bot', 'Thinking...', 'pending');
+
+        const body = new FormData();
+        body.append('task', selected);
+        body.append('query', query);
+        body.append('auction_id', typeof AUCTION_ID !== 'undefined' ? AUCTION_ID : '');
+
+        try {
+          const res = await fetch('/api/assistant', { method: 'POST', body });
+          const data = await res.json();
+          pending.remove();
+
+          if (data.error) {
+            say('bot', data.error, 'bad');
+          } else {
+            say('bot', data.answer, data.connected ? '' : 'stub');
+          }
+        } catch (err) {
+          pending.remove();
+          say('bot', 'Could not reach the assistant.', 'bad');
+        } finally {
+          send.disabled = false;
+          input.focus();
+        }
+      });
+
+      // Enter sends, shift+enter newlines.
+      input.addEventListener('keydown', (ev) => {
+        if (ev.key === 'Enter' && !ev.shiftKey) {
+          ev.preventDefault();
+          form.requestSubmit();
+        }
+      });
+    })();
+
+  </script>
+  {% block scripts %}{% endblock %}
+</body>
+</html>
