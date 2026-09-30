@@ -11,7 +11,7 @@ class AuthService:
         # token -> username
         self.active_tokens = {}
 
-        # Create users for M1 testing
+        # Create users
 
         self.create_user("ashish", "ashish123")
         self.create_user("bharat", "password123")

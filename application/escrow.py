@@ -17,7 +17,6 @@ class MockEscrow:
     def reserve_funds(self, bidder, auction_id, amount):
         """
         Mock reservation of bidder's funds.
-        No real money is transferred.
         """
         transaction_id = str(uuid.uuid4())
 

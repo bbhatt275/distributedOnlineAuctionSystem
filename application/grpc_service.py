@@ -100,7 +100,6 @@ class AuctionService(auction_pb2_grpc.AuctionServiceServicer):
 
         # -----------------------------------------
         # Case 2: Dashboard / Global chatbot
-        # No auction_id means use all active auctions
         # -----------------------------------------
 
         else:

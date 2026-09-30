@@ -7,7 +7,7 @@ from generated import llm_pb2_grpc
 class LLMClient:
     """
     Client used by the Application Server to communicate
-    with the independent LLM Server.
+    with LLM Server.
     """
 
     def __init__(self, address="localhost:50052"):
