@@ -58,6 +58,11 @@ class AuctionServiceStub:
                 request_serializer=auction__pb2.GetRequest.SerializeToString,
                 response_deserializer=auction__pb2.GetResponse.FromString,
                 _registered_method=True)
+        self.AskLLM = channel.unary_unary(
+                '/auction.AuctionService/AskLLM',
+                request_serializer=auction__pb2.AskLLMRequest.SerializeToString,
+                response_deserializer=auction__pb2.AskLLMResponse.FromString,
+                _registered_method=True)
 
 
 class AuctionServiceServicer:
@@ -93,6 +98,13 @@ class AuctionServiceServicer:
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
+    def AskLLM(self, request, context):
+        """llm
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
 
 def add_AuctionServiceServicer_to_server(servicer, server):
     rpc_method_handlers = {
@@ -115,6 +127,11 @@ def add_AuctionServiceServicer_to_server(servicer, server):
                     servicer.Get,
                     request_deserializer=auction__pb2.GetRequest.FromString,
                     response_serializer=auction__pb2.GetResponse.SerializeToString,
+            ),
+            'AskLLM': grpc.unary_unary_rpc_method_handler(
+                    servicer.AskLLM,
+                    request_deserializer=auction__pb2.AskLLMRequest.FromString,
+                    response_serializer=auction__pb2.AskLLMResponse.SerializeToString,
             ),
     }
     generic_handler = grpc.method_handlers_generic_handler(
@@ -229,6 +246,33 @@ class AuctionService:
             '/auction.AuctionService/Get',
             auction__pb2.GetRequest.SerializeToString,
             auction__pb2.GetResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def AskLLM(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/auction.AuctionService/AskLLM',
+            auction__pb2.AskLLMRequest.SerializeToString,
+            auction__pb2.AskLLMResponse.FromString,
             options,
             channel_credentials,
             insecure,

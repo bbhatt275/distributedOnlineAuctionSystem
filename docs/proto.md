@@ -36,6 +36,7 @@ Stubs are committed, so nobody needs protoc just to run a node.
 | `Logout` | `LogoutRequest` | `StatusResponse` | ending a session |
 | `Post` | `PostRequest` | `StatusResponse` | all writes |
 | `Get` | `GetRequest` | `GetResponse` | all reads |
+| `AskLLM` | `AskLLMRequest` | `AskLLMResponse` | assistant queries |
 
 This matches the assignment's required client surface — `login`, `logout`,
 `post`, `get`. Writes and reads are multiplexed through `Post`/`Get` using a
@@ -101,6 +102,51 @@ message GetResponse {
 
 `GetResponse` carries both lists; whichever is irrelevant comes back empty.
 `get_auction` returns a single-element `auctions` list rather than a scalar.
+
+
+### AskLLM
+
+```proto
+import "llm.proto";
+
+message AskLLMRequest {
+  string token = 1;
+  string query = 2;
+  llm.LLMTaskType task_type = 3;
+  string auction_id = 4;      // optional; attaches auction context
+}
+
+message AskLLMResponse {
+  bool success = 1;
+  string message = 2;
+  string answer = 3;
+}
+```
+
+The one place `auction.proto` imports `llm.proto` — `task_type` is the
+`llm.LLMTaskType` enum, so clients send the enum value, not a string.
+
+The application server owns the LLM hop: it validates the token, builds an
+`llm.AuctionContext` (including bid history) when `auction_id` is supplied,
+adds a `RequesterContext` naming the caller, and calls the LLM node. **The
+client never dials the LLM server directly.**
+
+`auction_id` is optional. Without it the model answers from the query alone —
+appropriate for general FAQ questions.
+
+Failure messages seen from this RPC:
+
+| Message | Meaning |
+|---|---|
+| `Not authenticated` | bad or expired token |
+| `Query cannot be empty` | blank query |
+| `Auction not found` | unknown `auction_id` |
+| `LLM server error: <repr>` | the LLM node failed or was unreachable |
+
+The last one embeds the raw gRPC exception repr, which is unreadable in a chat
+bubble; the client collapses the common cases in
+`client/auction_client.py::_tidy_llm_error`. Returning a status code instead
+would let that helper go away.
 
 ### Data messages
 
@@ -185,10 +231,10 @@ The LLM server is stateless — the application server owns conversation history
 and passes it in. Note `llm.proto` does have an error-code enum; `auction.proto`
 does not.
 
-**Not yet reachable from the client.** `auction.proto` exposes no route to the
-LLM, so `PostRequest` has no arm for it. The CLI's `ask` command is a stub. This
-needs either a new `oneof` arm on `PostRequest` or a dedicated RPC on
-`AuctionService` that proxies through.
+Reachable from the client via `AuctionService.AskLLM` (above), added in
+`1ab5044`. The LLM node itself stays independent — it never imports
+`auction.proto`, and receives only the context the application server chooses
+to send.
 
 ---
 

@@ -45,6 +45,40 @@ class CreateOutcome:
     recovered: bool = False
 
 
+# Labels for the four LLMTaskType values in proto/llm.proto.
+ASSISTANT_TASKS = (
+    ("AUCTION_FAQ", "Ask a question", "Rules, bidding, item details"),
+    ("ITEM_DESCRIPTION", "Write a description", "Generate a listing description"),
+    ("AUCTION_SUMMARY", "Summarise auction", "Price, activity, time left"),
+    ("RESULT_SUMMARY", "Summarise result", "Winner, final price, bid count"),
+)
+
+ASSISTANT_TASK_IDS = {t[0] for t in ASSISTANT_TASKS}
+
+
+@dataclass
+class AssistantReply:
+    answer: str
+    task: str
+    connected: bool = True
+    error: str | None = None
+
+
+def _tidy_llm_error(message):
+    """The server wraps gRPC failures as "LLM server error: <repr>", which is
+    unreadable in a chat bubble. Collapse the common ones."""
+    text = (message or "").strip()
+    low = text.lower()
+
+    if "unavailable" in low or "failed to connect" in low or "connection refused" in low:
+        return "The LLM node is not reachable. Is it running on port 50052?"
+    if "deadline" in low or "timeout" in low:
+        return "The LLM took too long to answer."
+    if text.startswith("LLM server error:"):
+        return "The LLM node returned an error."
+    return text
+
+
 class AuctionClient:
 
     def __init__(self, store=None, pool=None, session=None, config=None):
@@ -318,6 +352,68 @@ class AuctionClient:
         self._authed(IDEMPOTENT("CloseAuction"), build)
         self.get_auction(auction_id)
         return True
+
+    def assistant_route_available(self):
+        """Whether the app server exposes AskLLM."""
+        from generated import auction_pb2
+        service = auction_pb2.DESCRIPTOR.services_by_name.get("AuctionService")
+        return bool(service and service.methods_by_name.get("AskLLM"))
+
+    def ask_assistant(self, task, query, auction_id=None):
+        """Ask the LLM through the application server.
+
+        The server owns the LLM hop -- it builds the AuctionContext and calls
+        the LLM node. We just pass the task type and the question.
+        """
+        if task not in ASSISTANT_TASK_IDS:
+            raise ValueError(f"unknown task {task!r}")
+
+        query = (query or "").strip()
+        if not query:
+            raise ValueError("query is empty")
+
+        if not self.assistant_route_available():
+            return AssistantReply(
+                answer="The application server doesn't expose AskLLM yet.",
+                task=task,
+                connected=False,
+            )
+
+        from generated import auction_pb2, llm_pb2
+
+        task_value = llm_pb2.LLMTaskType.Value(task)
+
+        def build(token):
+            def invoke(stub, endpoint):
+                reply = stub.AskLLM(
+                    auction_pb2.AskLLMRequest(
+                        token=token,
+                        query=query,
+                        task_type=task_value,
+                        auction_id=auction_id or "",
+                    ),
+                    timeout=self.config.llm_timeout_s,
+                )
+                if not reply.success:
+                    err = classify_status(reply.message, endpoint=endpoint)
+                    # Only auth failures go back through the retry loop, so a
+                    # dead LLM node doesn't get retried four times.
+                    if err.kind is ErrorKind.UNAUTHENTICATED:
+                        raise err
+                return reply
+            return invoke
+
+        try:
+            # at-most-once: a timeout may mean the model is still generating,
+            # and resending just queues another expensive run behind it.
+            reply = self._authed(AT_MOST_ONCE("AskLLM"), build)
+        except AuctionError as exc:
+            return AssistantReply("", task, error=exc.user_message())
+
+        if not reply.success:
+            return AssistantReply("", task, error=_tidy_llm_error(reply.message))
+
+        return AssistantReply(reply.answer, task)
 
     def close(self):
         self.pool.close()

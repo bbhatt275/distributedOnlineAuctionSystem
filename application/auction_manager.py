@@ -44,7 +44,8 @@ class AuctionManager:
             start_time=start_time,
             end_time=end_time,
             active=True,
-            winner=""
+            winner="",
+            creator=creator
         )
 
         with self.state_store.lock:

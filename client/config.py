@@ -68,19 +68,27 @@ class WatchConfig:
 class ClientConfig:
     endpoints: list[str] = field(default_factory=_default_endpoints)
     rpc_timeout_s: float = field(default_factory=lambda: _env_float("AUCTION_RPC_TIMEOUT", 5.0))
+    # Local model generation is far slower than an auction RPC.
+    llm_timeout_s: float = field(default_factory=lambda: _env_float("AUCTION_LLM_TIMEOUT", 90.0))
     retry: RetryConfig = field(default_factory=RetryConfig)
     breaker: BreakerConfig = field(default_factory=BreakerConfig)
     watch: WatchConfig = field(default_factory=WatchConfig)
     auto_reauth: bool = True
 
     def grpc_channel_options(self):
-        # Keepalive matters here: without it a client blocked on a dead node
-        # waits for the OS TCP timeout, which looks like the client hanging.
+        # Keepalive has to stay inside what the server tolerates. grpc servers
+        # accept roughly one ping per 5 min while they aren't sending data, and
+        # AskLLM holds the call open for a minute or more while the model
+        # generates. Pinging every 10s through that earned a GOAWAY with
+        # ENHANCE_YOUR_CALM and killed the connection mid-answer.
+        #
+        # Liveness comes from per-call deadlines instead -- a dead node fails
+        # on connect, a hung one hits rpc_timeout_s.
         return [
-            ("grpc.keepalive_time_ms", 10_000),
-            ("grpc.keepalive_timeout_ms", 3_000),
-            ("grpc.keepalive_permit_without_calls", 1),
-            ("grpc.http2.max_pings_without_data", 0),
+            ("grpc.keepalive_time_ms", 300_000),
+            ("grpc.keepalive_timeout_ms", 10_000),
+            ("grpc.keepalive_permit_without_calls", 0),
+            ("grpc.http2.max_pings_without_data", 2),
             ("grpc.enable_retries", 0),
         ]
 

@@ -7,3 +7,4 @@ jinja2
 bcrypt
 pytest
 python-multipart
+ollama

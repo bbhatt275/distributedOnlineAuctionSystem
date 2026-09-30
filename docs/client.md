@@ -5,16 +5,15 @@ gRPC to the application server, per the assignment's technical requirements.
 
 ## Running
 
-```bash
-python -m venv .venv && .venv/bin/pip install -r requirements.txt
+See [setup.md](setup.md) for the full four-process run, including Ollama.
 
-.venv/bin/python -m application.server          # terminal 1 — app server (teammate's)
-.venv/bin/python -m client.commands             # terminal 2 — interactive CLI
-.venv/bin/uvicorn web.app:app --port 8000       # terminal 3 — browser UI
+```bash
+.venv/bin/python -m llm.server                  # LLM node
+.venv/bin/python -m application.server          # application server
+.venv/bin/uvicorn web.app:app --port 8000       # browser UI
+.venv/bin/python -m client.commands             # or the CLI
 .venv/bin/python -m client.simulator race --clients 20   # concurrency demo
 ```
-
-Seed users are defined in `application/auth_service.py`.
 
 ## Layout
 
@@ -30,6 +29,8 @@ client/
   commands.py        interactive CLI
   simulator.py       concurrent client simulator ("Node 5")
   grpc_client.py     pre-existing thin stub wrapper (unchanged)
+tests/fakes/
+  fake_llm_server.py stand-in LLM node for testing without Ollama
 web/
   app.py             FastAPI + Jinja2; browser <-HTTP/SSE-> web <-gRPC-> server
 ```
@@ -70,6 +71,36 @@ the store diffs snapshots into `BID_PLACED` / `AUCTION_UPDATED` / `OUTBID` /
 Bid history is only polled for auctions the UI has explicitly focused, so cost
 does not grow with the total number of auctions.
 
+
+## Assistant widget
+
+A floating panel on every logged-in page, offering the four `llm.LLMTaskType`
+values as chips — FAQ, item description, auction summary, result summary.
+Selecting a chip changes the input hint; on an auction page the widget passes
+that `auction_id` automatically, so answers are grounded in real state.
+
+```
+browser  --POST /api/assistant-->  web.app  --AskLLM-->  app server  -->  LLM node
+```
+
+The task list comes from `GET /api/assistant/tasks` rather than being hardcoded
+in the template, so it is defined once in `ASSISTANT_TASKS`.
+
+`assistant_route_available()` checks whether the server exposes `AskLLM`. When
+it doesn't, the widget shows a red *not connected* badge and renders replies
+with a dashed border, so a stub can't be mistaken for a real answer during a
+demo. It turns itself on when the RPC appears.
+
+Two behaviours differ from normal auction RPCs:
+
+* **`AskLLM` is at-most-once.** A timeout may mean the model is still
+  generating; resending queues another expensive run behind it. Only failures
+  that prove nothing was sent are retried.
+* **It gets its own deadline**, `llm_timeout_s` (90s), because generation takes
+  seconds to tens of seconds where an auction RPC takes milliseconds.
+
+Measured end to end with `qwen3.5:9b`: 5–14 seconds per reply.
+
 ## Failure handling
 
 Classified in `errors.py`, acted on in `resilience.py`:
@@ -83,6 +114,7 @@ Classified in `errors.py`, acted on in `resilience.py`:
 | token expired | re-login once and replay, collapsing concurrent refreshes via a generation counter |
 | bad credentials / bid too low | non-retryable, fails immediately |
 | servicer crash | classified `SERVER_BUG`, not retried |
+| LLM node down | reported in the widget, never retried |
 
 Retry policy is **per operation**, because the proto has no idempotency key —
 see [proto-gaps.md](proto-gaps.md) item 2 for the full table and reasoning.

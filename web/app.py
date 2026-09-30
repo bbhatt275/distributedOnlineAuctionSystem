@@ -30,7 +30,7 @@ from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Stre
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
-from client.auction_client import AuctionClient
+from client.auction_client import ASSISTANT_TASKS, AuctionClient
 from client.errors import AuctionError
 from client.watcher import AuctionWatcher
 
@@ -255,6 +255,41 @@ async def api_state(auction_session: str | None = Cookie(default=None)):
         **session.client.store.snapshot(),
         "health": session.client.pool.health(),
         "now": time.time(),
+    })
+
+
+@app.get("/api/assistant/tasks")
+async def assistant_tasks(auction_session: str | None = Cookie(default=None)):
+    session = _session(auction_session)
+    if session is None:
+        return JSONResponse({"error": "not logged in"}, status_code=401)
+
+    return JSONResponse({
+        "tasks": [{"id": t, "label": label, "hint": hint} for t, label, hint in ASSISTANT_TASKS],
+        "connected": session.client.assistant_route_available(),
+    })
+
+
+@app.post("/api/assistant")
+async def assistant_ask(task: str = Form(...), query: str = Form(...),
+                        auction_id: str = Form(""),
+                        auction_session: str | None = Cookie(default=None)):
+    session = _session(auction_session)
+    if session is None:
+        return JSONResponse({"error": "not logged in"}, status_code=401)
+
+    try:
+        reply = await asyncio.to_thread(
+            session.client.ask_assistant, task, query, auction_id or None
+        )
+    except ValueError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=400)
+
+    return JSONResponse({
+        "answer": reply.answer,
+        "task": reply.task,
+        "connected": reply.connected,
+        "error": reply.error,
     })
 
 
