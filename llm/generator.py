@@ -7,12 +7,9 @@ from llm.context_builder import (
 
 class LLMGenerator:
     """
-    Coordinates:
-        task selection
-        prompt construction
-        model inference
+    Coordinates task selection, prompt construction and model inference
 
-    This class does not know anything about gRPC.
+    This class does not know anything about gRPC, rather it acts as a service layer only.
     """
 
     def __init__(self, model=None):
@@ -35,8 +32,8 @@ class LLMGenerator:
 
         messages.extend(user_messages)
 
-        temperature = 0.2
-        max_tokens = 0
+        temperature = 0.2 #default:low creativity more deterministic result
+        max_tokens = 0 #unlimited/model default
 
         if request.HasField("generation_config"):
 

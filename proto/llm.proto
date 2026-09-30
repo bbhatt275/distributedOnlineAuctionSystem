@@ -3,39 +3,33 @@ syntax = "proto3";
 package llm;
 
 
-// ============================================================
-// LLM Service
-// ============================================================
+// LLMService is the grpc service interface that  the application server calls to interact with the LLM.
 
 service LLMService {
 
-    // Main LLM endpoint.
-    //
-    // Supported M1 capabilities:
-    // 1. Auction FAQ / chatbot
-    // 2. Item-description generation
-    // 3. Auction summarization
-    // 4. Completed-auction / result summarization
+    //It serves as the main LLm endpoint and supports the capabalities:
+    // 1. Auction FAQ
+    // 2. Item description generation
+    // 3. Ongoing Auction summarization
+    // 4. Completed auction summarization
+
     rpc GetLLMAnswer(LLMRequest) returns (LLMResponse);
 }
-
-
-// ============================================================
-// LLM Task Type
-// ============================================================
+//Enums
+// LLMTaskType tells the LLM which kind of job it has to perform.
 
 enum LLMTaskType {
 
     // Default / invalid task.
     LLM_TASK_UNSPECIFIED = 0;
 
-    // Answer an auction-related question.
+    // Answer an auction related question.
     AUCTION_FAQ = 1;
 
-    // Generate a description for an auction item.
+    // Generate a description for an item in the auction.
     ITEM_DESCRIPTION = 2;
 
-    // Summarize an active or ongoing auction.
+    // Summarize an ongoing auction.
     AUCTION_SUMMARY = 3;
 
     // Summarize a completed auction and its result.
@@ -43,9 +37,7 @@ enum LLMTaskType {
 }
 
 
-// ============================================================
-// Conversation
-// ============================================================
+// Used to establish conversation roles.
 
 enum MessageRole {
 
@@ -56,7 +48,8 @@ enum MessageRole {
     ASSISTANT = 2;
 }
 
-
+//Messages and their variables
+//represents a single turn in a multi turn conversation.
 message ChatMessage {
 
     MessageRole role = 1;
@@ -65,41 +58,26 @@ message ChatMessage {
 }
 
 
-// ============================================================
 // Auction Context
-// ============================================================
-//
-// This message intentionally does NOT reuse the Auction message
-// from auction.proto.
-//
-// The Application Server decides which auction information is
-// relevant and constructs this context before calling the LLM.
-//
+// This message intentionally does NOT reuse the Auction message from auction.proto.
+
+// The Application Server decides which auction information is relevant and constructs this context before calling the LLM.
+
 // This keeps the LLM service independent from AuctionService.
-// ============================================================
 
 message AuctionContext {
 
-    // --------------------------------------------------------
     // Auction identity
-    // --------------------------------------------------------
-
     string auction_id = 1;
 
 
-    // --------------------------------------------------------
     // Item information
-    // --------------------------------------------------------
-
     string item_name = 2;
 
     string item_description = 3;
 
 
-    // --------------------------------------------------------
     // Pricing
-    // --------------------------------------------------------
-
     double starting_price = 4;
 
     double current_highest_bid = 5;
@@ -108,9 +86,7 @@ message AuctionContext {
     string currency = 6;
 
 
-    // --------------------------------------------------------
     // Auction state
-    // --------------------------------------------------------
 
     // True if the auction is currently active.
     bool active = 7;
@@ -122,36 +98,28 @@ message AuctionContext {
     int64 end_time = 9;
 
 
-    // --------------------------------------------------------
     // Bidding information
-    // --------------------------------------------------------
 
     int32 bid_count = 10;
 
     // ID/username of the current highest bidder.
-    //
-    // Application Server should only provide this when
-    // revealing it to the LLM is appropriate.
+    // Application Server should only provide this when revealing it to the LLM is appropriate.
+
     string highest_bidder = 11;
 
 
-    // --------------------------------------------------------
     // Result information
-    // --------------------------------------------------------
 
     // ID/username of the winner.
-    //
-    // Normally populated only for completed auctions.
+    // Normally made available only for completed auctions.
     string winner = 12;
 
     // Final winning bid.
     double winning_bid = 13;
 
 
-    // --------------------------------------------------------
     // Flexible item metadata
-    // --------------------------------------------------------
-    //
+
     // Allows different item types without modifying this proto.
     //
     // Examples:
@@ -164,38 +132,26 @@ message AuctionContext {
     map<string, string> item_attributes = 14;
 
 
-    // --------------------------------------------------------
+
     // Individual bid information
-    // --------------------------------------------------------
-    //
+
     // Optional.
-    //
     // The Application Server should provide these only when
     // the requested LLM task actually requires bidding history.
-    //
 
     repeated BidContext bids = 15;
 
 
-    // --------------------------------------------------------
     // Additional application-provided context
-    // --------------------------------------------------------
-    //
-    // Used for information that does not fit naturally into
-    // the structured fields above.
-    //
+    // Used for information that may not fit naturally into the structured fields above.
 
     string additional_context = 16;
 }
 
 
-// ============================================================
 // Bid Context
-// ============================================================
-//
-// Deliberately independent from auction.proto's Bid message.
+// It is deliberately kept independent from auction.proto's Bid message.
 // Only information useful to the LLM is included.
-// ============================================================
 
 message BidContext {
 
@@ -210,37 +166,26 @@ message BidContext {
 }
 
 
-// ============================================================
 // Requester Context
-// ============================================================
-//
+
 // Optional information about the user/requester.
-// Do NOT put authentication tokens or passwords here.
-// ============================================================
+// Warning, Do NOT put authentication tokens or passwords here.
 
 message RequesterContext {
 
-    // Application-level user identifier if relevant.
+    // Application level user identifier if relevant.
     string user_id = 1;
 
-    // Examples:
     // "buyer", "seller", "admin"
     string role = 2;
 
-    // Additional non-sensitive information relevant to
-    // answering the current request.
+    // Additional non-sensitive information relevant to answering the current request.
     string additional_context = 3;
 }
 
 
-// ============================================================
 // Generation Configuration
-// ============================================================
-//
-// Optional parameters supplied by the Application Server.
-//
-// 0 means "use LLM Server default".
-// ============================================================
+// Additional Hyperparameters passed to fine tune generations.
 
 message GenerationConfig {
 
@@ -248,20 +193,19 @@ message GenerationConfig {
     // 0 = server default.
     int32 max_tokens = 1;
 
-    // Sampling temperature.
-    // 0 = server default.
+    // Sampling temperature (low for deterministic result, high for creative results)
+    // 0 is the server default.
     float temperature = 2;
 }
 
 
-// ============================================================
-// LLM Request
-// ============================================================
+// LLM Request (Important)
+// This is the primary request or query being sent from application server to the grpc LLM Service
 
 message LLMRequest {
 
     // Unique ID generated by the Application Server.
-    //
+
     // Used for tracing a request across services.
     string request_id = 1;
 
@@ -270,12 +214,7 @@ message LLMRequest {
     LLMTaskType task_type = 2;
 
 
-    // Current user/application request.
-    //
-    // Examples:
-    // "Can I withdraw my bid?"
-    // "Generate a description for this laptop."
-    // "Summarize this auction."
+    // Current user/application requestor query.
     string query = 3;
 
 
@@ -283,34 +222,28 @@ message LLMRequest {
     AuctionContext auction_context = 4;
 
 
-    // Optional requester information.
+    // (Optional) requester information.
     RequesterContext requester_context = 5;
 
 
-    // Optional previous conversation.
-    //
-    // The Application Server owns conversation/session state.
-    // The LLM Server remains stateless.
+    // (Optional) previous conversation.
     repeated ChatMessage conversation_history = 6;
 
 
-    // Additional free-form context supplied by the
-    // Application Server.
+    // Additional context that may be supplied by the Application Server.
     string additional_context = 7;
 
 
-    // Optional generation parameters.
+    // (Optional) Hyperparameters for tuning.
     GenerationConfig generation_config = 8;
 }
 
 
-// ============================================================
-// Error Codes
-// ============================================================
+// Enum for Error Codes
 
 enum LLMErrorCode {
 
-    // Request completed successfully.
+    // Request completed successfully (NO Error).
     LLM_ERROR_NONE = 0;
 
     // Request is invalid or missing required information.
@@ -327,13 +260,11 @@ enum LLMErrorCode {
 }
 
 
-// ============================================================
+
 // Model Usage Information
-// ============================================================
-//
-// Useful for Member C's model benchmarking and reporting.
+
+// Useful for benchmarking and reporting LLM Performance.
 // Values may be zero when unavailable.
-// ============================================================
 
 message ModelUsage {
 
@@ -345,9 +276,8 @@ message ModelUsage {
 }
 
 
-// ============================================================
-// LLM Response
-// ============================================================
+// LLM Response (Important)
+//The response sent back by the LLM server after generation.
 
 message LLMResponse {
 
@@ -359,11 +289,11 @@ message LLMResponse {
     bool success = 2;
 
 
-    // Generated answer.
+    // Generated answer or response.
     string answer = 3;
 
 
-    // Human-readable status or error message.
+    // Human readable status or error message.
     string message = 4;
 
 
@@ -372,16 +302,14 @@ message LLMResponse {
 
 
     // Model used for this response.
-    //
-    // Example:
-    // "llama3.2:3b"
+    // Example:"llama3.2:3b"
     string model_name = 6;
 
 
-    // Server-side inference/processing time.
+    // Server side inference/processing time.
     int64 processing_time_ms = 7;
 
 
-    // Optional model usage statistics.
+    // (Optional) model usage statistics.
     ModelUsage usage = 8;
 }

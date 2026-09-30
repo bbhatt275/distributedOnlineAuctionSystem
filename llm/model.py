@@ -9,13 +9,9 @@ class LLMModel:
     Thin wrapper around the locally running Ollama model.
 
     This class is responsible ONLY for model inference.
-    It does not know anything about:
-    - gRPC
-    - auctions
-    - users
-    - authentication
-    - bidding
+    It does not know anything about gRPC, auctions, users, authentication or bidding.
     """
+
 
     def __init__(self, model_name: str = MODEL_NAME):
         self.model_name = model_name
@@ -28,8 +24,7 @@ class LLMModel:
     ) -> str:
         """
         Send a chat request to Ollama and return the generated text.
-
-        max_tokens=0 means use Ollama's default.
+        max_tokens=0 means use Ollama's default if not provided.
         """
 
         options = {

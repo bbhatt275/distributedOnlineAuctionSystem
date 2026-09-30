@@ -32,9 +32,7 @@ class LLMService(llm_pb2_grpc.LLMServiceServicer):
 
         start_time = time.perf_counter()
 
-        # ----------------------------------------
-        # Validate request
-        # ----------------------------------------
+        # Ensure the validity of the request
 
         if not request.request_id:
             return llm_pb2.LLMResponse(
@@ -60,9 +58,7 @@ class LLMService(llm_pb2_grpc.LLMServiceServicer):
                 error_code=llm_pb2.INVALID_REQUEST,
             )
 
-        # ----------------------------------------
         # Generate answer
-        # ----------------------------------------
 
         try:
 
@@ -82,9 +78,7 @@ class LLMService(llm_pb2_grpc.LLMServiceServicer):
                 processing_time_ms=processing_time_ms,
             )
 
-        # ----------------------------------------
         # Model unavailable
-        # ----------------------------------------
 
         except Exception as e:
 
