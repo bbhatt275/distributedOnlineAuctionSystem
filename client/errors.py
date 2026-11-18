@@ -132,7 +132,11 @@ def classify_rpc_error(exc, endpoint=None):
             )
         kind = ErrorKind.SERVER_BUG
 
-    return AuctionError(kind, detail, endpoint=endpoint, cause=exc)
+    hint_match = _LEADER_HINT.search(detail)
+    return AuctionError(
+        kind, detail, endpoint=endpoint, cause=exc,
+        leader_hint=hint_match.group(1) if hint_match else None,
+    )
 
 
 # Matching on prose is fragile, so it's confined to this table. Every pattern
@@ -153,7 +157,7 @@ _MESSAGE_PATTERNS = (
     (re.compile(r"consensus timeout|commit timeout", re.I), ErrorKind.CONSENSUS_TIMEOUT),
 )
 
-_LEADER_HINT = re.compile(r"leader(?: is)?[:= ]+([\w.\-]+:\d+)", re.I)
+_LEADER_HINT = re.compile(r"leader(?: is)?[:= ]+([\w.\-]+:\d+|\d+)", re.I)
 
 
 def classify_status(message, endpoint=None):

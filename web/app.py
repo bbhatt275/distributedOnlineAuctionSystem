@@ -33,6 +33,7 @@ from fastapi.templating import Jinja2Templates
 from client.auction_client import ASSISTANT_TASKS, AuctionClient
 from client.errors import AuctionError
 from client.watcher import AuctionWatcher
+from application.auth_service import AuthService
 
 log = logging.getLogger("auction.web")
 
@@ -131,8 +132,50 @@ async def index(request: Request, auction_session: str | None = Cookie(default=N
 
 
 @app.get("/login", response_class=HTMLResponse)
-async def login_form(request: Request, error: str | None = None):
-    return templates.TemplateResponse(request, "login.html", {"error": error})
+async def login_form(
+    request: Request,
+    error: str | None = None,
+    registered: bool = False,
+):
+    return templates.TemplateResponse(request, "login.html", {
+        "error": error,
+        "registered": registered,
+    })
+
+
+@app.get("/register", response_class=HTMLResponse)
+async def register_form(request: Request):
+    return templates.TemplateResponse(request, "register.html", {
+        "error": None,
+        "username": "",
+    })
+
+
+@app.post("/register", response_class=HTMLResponse)
+async def register_user(
+    request: Request,
+    username: str = Form(...),
+    password: str = Form(...),
+    confirm_password: str = Form(...),
+):
+    username = username.strip()
+
+    if password != confirm_password:
+        return templates.TemplateResponse(request, "register.html", {
+            "error": "Passwords do not match.",
+            "username": username,
+        }, status_code=400)
+
+    try:
+        auth = AuthService()
+        await asyncio.to_thread(auth.create_user, username, password)
+    except ValueError as exc:
+        return templates.TemplateResponse(request, "register.html", {
+            "error": str(exc),
+            "username": username,
+        }, status_code=400)
+
+    return RedirectResponse("/login?registered=true", status_code=303)
 
 
 @app.post("/login")
