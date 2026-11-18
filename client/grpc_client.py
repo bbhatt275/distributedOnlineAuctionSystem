@@ -12,9 +12,9 @@ from client.resilience import (
 
 
 class AuctionClient:
-    """Auction gRPC client with endpoint rotation and leader-aware failover.
+    """Auction gRPC client with endpoint rotation and leader aware failover.
 
-    AUCTION_ENDPOINTS must list host endpoints in Raft node-ID order:
+    AUCTION_ENDPOINTS must list host endpoints in Raft node ID order:
     node 1 first, node 2 second, and so on.
     """
 

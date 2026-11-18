@@ -5,9 +5,6 @@ from client.grpc_client import AuctionClient
 def main():
     client = AuctionClient()
 
-    # ============================================================
-    # 1. LOGIN
-    # ============================================================
 
     login_response = client.login(
         "bharat",
@@ -24,9 +21,6 @@ def main():
     token = login_response.token
     print("Token:", token)
 
-    # ============================================================
-    # 2. CREATE AUCTION
-    # ============================================================
 
     create_response = client.create_auction(
         token=token,
@@ -45,10 +39,6 @@ def main():
         return
 
     auction_id = create_response.auction_id
-
-    # ============================================================
-    # 3. GET AUCTION
-    # ============================================================
 
     get_response = client.get_auction(
         token,
@@ -69,9 +59,6 @@ def main():
         print("Highest bidder:", auction.highest_bidder)
         print("Active:", auction.active)
 
-    # ============================================================
-    # 4. PLACE FIRST BID
-    # ============================================================
 
     bid_response = client.place_bid(
         token=token,
@@ -83,10 +70,6 @@ def main():
     print("Success:", bid_response.success)
     print("Message:", bid_response.message)
 
-    # ============================================================
-    # 5. TRY INVALID LOWER BID
-    # ============================================================
-
     bid_response = client.place_bid(
         token=token,
         auction_id=auction_id,
@@ -96,10 +79,6 @@ def main():
     print("\n=== BID 2 — LOWER BID ===")
     print("Success:", bid_response.success)
     print("Message:", bid_response.message)
-
-    # ============================================================
-    # 6. PLACE HIGHER BID
-    # ============================================================
 
     print("\n=== CLOSE AUCTION ===")
     res = client.close_auction(token, auction_id)
@@ -114,9 +93,6 @@ def main():
     print("Success:", bid_response.success)
     print("Message:", bid_response.message)
 
-    # ============================================================
-    # 7. GET AUCTION AGAIN
-    # ============================================================
 
     get_response = client.get_auction(
         token,
@@ -132,9 +108,6 @@ def main():
         print("Highest bidder:", auction.highest_bidder)
         print("Active:", auction.active)
 
-    # ============================================================
-    # 8. GET BIDS
-    # ============================================================
 
     bids_response = client.get_bids(
         token,
@@ -197,10 +170,6 @@ def main():
     print("Highest bid:", auction.current_highest_bid)
 
 
-
-    # ============================================================
-    # 9. LOGOUT
-    # ============================================================
 
     logout_response = client.logout(token)
 

@@ -7,7 +7,7 @@ Each worker is a real AuctionClient with its own token, channel and retry
 state, so this exercises the same path the CLI and web UI use.
 
 The race mode is the concurrency-control demo: N clients bid on one auction at
-once, and afterwards we check the server serialised them properly -- no
+once, and after that we check the server serialised them properly -- no
 duplicate amounts, no lost updates, strictly increasing bids.
 """
 
