@@ -26,9 +26,11 @@
       <input name="amount" type="number" step="0.01" placeholder="your bid" required>
       <button type="submit">Place bid</button>
     </form>
+    {% if username and auction.creator and auction.creator|lower == username|lower %}
     <form method="post" action="/auction/{{ auction.auction_id }}/close" class="inline">
       <button class="secondary">Close now</button>
     </form>
+    {% endif %}
     {% else %}
     <p class="won">Winner: <strong>{{ auction.winner or '—' }}</strong></p>
     {% endif %}

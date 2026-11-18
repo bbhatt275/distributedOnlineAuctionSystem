@@ -70,6 +70,7 @@ class AuctionView:
     end_time: int
     active: bool
     winner: str
+    creator: str = ""
 
     @classmethod
     def from_proto(cls, msg):
@@ -84,6 +85,7 @@ class AuctionView:
             end_time=msg.end_time,
             active=msg.active,
             winner=msg.winner,
+            creator=msg.creator,
         )
 
     def seconds_remaining(self, now):
