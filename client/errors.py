@@ -2,7 +2,7 @@
 
 auction.proto has no error codes, so failures arrive either as a raw
 grpc.RpcError or as StatusResponse(success=false, message="some prose").
-Both get funnelled through here into an AuctionError with an ErrorKind, so
+Both get transported through here into an AuctionError with an ErrorKind, so
 nothing outside this module has to match on message strings.
 """
 

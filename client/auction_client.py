@@ -4,7 +4,7 @@ This is what the CLI, web app and simulator all use. Sits on top of the
 generated stubs and adds retry policy, failover, re-authentication and Store
 updates.
 
-Two operations need extra care because the proto has no idempotency key:
+Two operations need extra care because the proto has no key:
 
   place_bid       retrying the same amount is harmless, but the retry then
                   reports "bid too low" even when our first attempt won, so we

@@ -1,4 +1,4 @@
-"""Interactive CLI client.
+"""Interactive cli client.
 
     python -m client.commands
     python -m client.commands --user alice --password alice123
