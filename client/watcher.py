@@ -4,8 +4,8 @@ auction.proto has no streaming RPC, so live updates are faked by polling and
 letting the Store diff each snapshot into events. Subscribers can't tell the
 difference, which means only this file changes if a real stream shows up later.
 
-The interval adapts so the demo stays responsive without hammering the
-server's 10-worker pool.
+The interval adapts so the site stays responsive without hammering the
+server's 10 worker pool.
 """
 
 from __future__ import annotations

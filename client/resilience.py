@@ -3,10 +3,10 @@
 Retry policy is per operation rather than global, because auction.proto has no
 idempotency key and not every write is safe to resend:
 
-  PlaceBid      safe -- the server rejects amount <= current_highest_bid, so a
+  PlaceBid      safe --> the server rejects amount <= current_highest_bid, so a
                 resend of the same amount can't take effect twice
-  CloseAuction  safe -- sets active=False, applying it twice is a no-op
-  Get*, Logout  safe -- reads / idempotent
+  CloseAuction  safe --> sets active=False, applying it twice is a no-op
+  Get*, Logout  safe --> reads / idempotent
   Login         safe, though each retry mints a new token and orphans the old
   CreateAuction NOT safe -- new uuid4 per call, a retry makes a second auction
 """

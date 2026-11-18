@@ -1,4 +1,4 @@
-"""Client configuration. Most values can be overridden by env var."""
+"""Client configuration. Most values can be overridden by .env var."""
 
 from __future__ import annotations
 

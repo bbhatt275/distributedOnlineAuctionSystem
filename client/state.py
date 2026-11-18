@@ -6,8 +6,10 @@ whatever actually changed.
 
 Auction has no version field, so ordering relies on invariants the server
 already guarantees: the highest bid never drops while an auction is active,
-and auctions never reopen once closed. Anything contradicting those is treated
+and auctions never reopen once closed. Anything contradicting those which are treated
 as a stale read and dropped.
+
+
 """
 
 from __future__ import annotations
