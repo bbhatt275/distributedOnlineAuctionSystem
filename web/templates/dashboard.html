@@ -53,14 +53,6 @@
       <label>Duration (s) <input name="duration_seconds" type="number" value="300" required></label>
       <button type="submit">Create</button>
     </form>
-
-    <!-- <h2>Cluster</h2>
-    <ul class="nodes">
-      {% for endpoint, breaker in health.items() %}
-        <li><span class="mono">{{ endpoint }}</span> <span class="pill {{ 'connected' if breaker == 'closed' else 'partitioned' }}">{{ breaker }}</span></li>
-      {% endfor %}
-    </ul>
-    <p class="hint">Breaker state per application-server node. Milestone&nbsp;2 will list all Raft peers here.</p> -->
   </aside>
 </div>
 {% endblock %}
