@@ -34,6 +34,7 @@ class RetryPolicy:
     retry_on_retryable: bool = True
     retry_on_never_sent: bool = True
     max_attempts: int | None = None
+    retry_on_not_leader: bool = True
 
     @classmethod
     def idempotent(cls, name):
@@ -269,12 +270,27 @@ def call(pool, policy, invoke, config=None, on_retry=None):
             pool._drop_channel(node)
 
         if err.leader_hint:
-            pool.prefer(err.leader_hint)
+            hint = err.leader_hint
+            # The server reports a Raft node ID. AUCTION_ENDPOINTS must be
+            # ordered node1, node2, ... so IDs map to list positions.
+            if hint.isdigit():
+                node_number = int(hint)
+                if 1 <= node_number <= len(pool.endpoints):
+                    hint = pool.endpoints[node_number - 1]
+                else:
+                    hint = None
+            if hint in pool.endpoints:
+                pool.prefer(hint)
+            elif len(pool.endpoints) > 1:
+                pool._advance()
         elif err.kind.should_failover and len(pool.endpoints) > 1:
             pool._advance()
 
-        may_retry = ((policy.retry_on_retryable and err.retryable)
-                     or (policy.retry_on_never_sent and _never_reached_server(err)))
+        may_retry = (
+            (policy.retry_on_retryable and err.retryable)
+            or (policy.retry_on_never_sent and _never_reached_server(err))
+            or (policy.retry_on_not_leader and err.kind is ErrorKind.NOT_LEADER)
+        )
 
         attempt += 1
         if not may_retry or attempt >= max_attempts:

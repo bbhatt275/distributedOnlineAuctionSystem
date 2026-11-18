@@ -3,14 +3,21 @@ import grpc
 from generated import llm_pb2
 from generated import llm_pb2_grpc
 
+import os
+
 
 class LLMClient:
     """
     Client used by the Application Server to communicate
-    with the independent LLM Server.
+    with LLM Server.
     """
 
-    def __init__(self, address="localhost:50052"):
+
+    def __init__(self, address=None):
+        address = address or os.getenv(
+            "LLM_SERVER_ADDRESS",
+            "localhost:50052"
+        )
         self.channel = grpc.insecure_channel(address)
 
         self.stub = llm_pb2_grpc.LLMServiceStub(

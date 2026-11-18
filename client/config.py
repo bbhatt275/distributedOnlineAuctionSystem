@@ -26,18 +26,18 @@ def _env_int(name, default):
 
 def _default_endpoints():
     raw = os.environ.get("AUCTION_ENDPOINTS")
+
     if raw:
         return [e.strip() for e in raw.split(",") if e.strip()]
 
-    host = _env_str("APP_HOST", "localhost")
-    port = _env_int("APP_PORT", 50051)
+    return [
+        "localhost:50051",
+        "localhost:50052",
+        "localhost:50053",
+        "localhost:50054",
+        "localhost:50055"
+    ]
 
-    # .env.example has APP_HOST=0.0.0.0, which is a bind address, not something
-    # you can dial. Rewrite it so a copied .env doesn't break the client.
-    if host in ("0.0.0.0", "::", ""):
-        host = "localhost"
-
-    return [f"{host}:{port}"]
 
 
 @dataclass(frozen=True)

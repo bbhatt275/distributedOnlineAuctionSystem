@@ -57,3 +57,7 @@ Thumbs.db
 
 # Temporary files
 tempCodeRunnerFile.py
+
+# SQLite user account database (do not commit user data)
+auth_data/*.db
+auth_data/*.db-*
