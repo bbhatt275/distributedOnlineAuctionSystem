@@ -12,7 +12,7 @@ A distributed online auction platform built using Python, gRPC, Docker, and Olla
 ### 1. Clone the Repository
 
 ```bash
-git clone <YOUR_REPOSITORY_URL>
+git clone <REPOSITORY_URL>
 cd distributedOnlineAuctionSystem
 ```
 
