@@ -130,7 +130,7 @@ class AuctionService(auction_pb2_grpc.AuctionServiceServicer):
                     timestamp=bid.timestamp,
                 )
         else:
-            active_auctions = self.auction_manager.get_auctions(active_only=True)
+            active_auctions = self.auction_manager.get_auctions(active_only=False)
             context_parts = []
 
             for auction in active_auctions:

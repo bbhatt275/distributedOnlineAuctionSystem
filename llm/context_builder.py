@@ -138,71 +138,41 @@ def build_requester_context(requester):
 
 
 def build_messages(request):
-    """
-    Convert an LLMRequest protobuf message into the messages
-    expected by the model layer.
+    context_sections = []
 
-    This function does NOT call Ollama.
-    """
+    # Protobuf message fields are never None; use HasField for presence.
+    if request.HasField("auction_context"):
+        auction_text = build_auction_context(request.auction_context)
+        context_sections.extend(["AUCTION CONTEXT:", auction_text])
 
-    auction_context = build_auction_context(
-        request.auction_context
-    )
-
-    requester_context = build_requester_context(
-        request.requester_context
-    )
-
-    context_sections = [
-        "AUCTION CONTEXT:",
-        auction_context,
-    ]
-
-    if requester_context:
-        context_sections.extend([
-            "",
-            "REQUESTER CONTEXT:",
-            requester_context,
-        ])
+    if request.HasField("requester_context"):
+        requester_text = build_requester_context(request.requester_context)
+        if requester_text:
+            if context_sections:
+                context_sections.append("")
+            context_sections.extend(["REQUESTER CONTEXT:", requester_text])
 
     if request.additional_context:
-        context_sections.extend([
-            "",
-            "ADDITIONAL CONTEXT:",
-            request.additional_context,
-        ])
+        if context_sections:
+            context_sections.append("")
+        context_sections.extend(["ADDITIONAL CONTEXT:", request.additional_context])
 
     context_text = "\n".join(context_sections)
 
     messages = []
-
-    # For previous conversation.
     for message in request.conversation_history:
-
         if message.role == llm_pb2.USER:
             role = "user"
-
         elif message.role == llm_pb2.ASSISTANT:
             role = "assistant"
-
         else:
             continue
+        messages.append({"role": role, "content": message.content})
 
-        messages.append({
-            "role": role,
-            "content": message.content,
-        })
-
-    # Current request.
     messages.append({
         "role": "user",
-        "content": (
-            f"{context_text}\n\n"
-            f"USER REQUEST:\n"
-            f"{request.query}"
-        ),
+        "content": f"{context_text}\n\nUSER REQUEST:\n{request.query}",
     })
-
     return messages
 
 def get_system_prompt(task_type):
